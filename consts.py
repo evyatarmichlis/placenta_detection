@@ -9,6 +9,9 @@ class Consts:
     font_scale = 0.5
     font_color = (255, 178, 102)  # Blue color in BGR
     font_thickness = 1
+    TOKEN = "6864082316:AAFTOl_2EHb4jTHbdUxeQKgOgDQ93Y3Sk9M"
+    chat_id = "298121019"
+
 
 
 class Folders:
