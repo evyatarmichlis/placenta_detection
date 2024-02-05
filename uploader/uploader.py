@@ -55,6 +55,31 @@ class GoogleDriveUploader:
         except Exception as error:
             print(f"An error occurred: {error}")
 
+    def upload_csv_to_drive(self, csv_path, folder_id=consts.Folders.placenta_main_folder):
+        try:
+            service = build("drive", "v3", credentials=self.creds)
+            existing_files = service.files().list(
+                q=f"name='{os.path.basename(csv_path)}' and '{folder_id}' in parents",
+                fields="files(id)"
+            ).execute().get("files", [])
+
+            if existing_files:
+                raise Exception(f"File '{os.path.basename(csv_path)}' already exists in the folder.")
+
+            file_metadata = {"name": os.path.basename(csv_path), "parents": [folder_id]}
+            media = MediaFileUpload(csv_path, mimetype="text/csv")
+
+            uploaded_file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields="id"
+            ).execute()
+
+            print(f"File '{os.path.basename(csv_path)}' uploaded to Google Drive. File ID: {uploaded_file['id']}")
+
+        except Exception as error:
+            print(f"An error occurred: {error}")
+
 # if __name__ == "__main__":
 #     uploader = GoogleDriveUploader()
 #     image_paths = [r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg",r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example4.jpg"]

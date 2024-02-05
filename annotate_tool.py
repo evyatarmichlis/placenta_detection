@@ -1,14 +1,17 @@
+import copy
 from datetime import datetime
 from tkinter import messagebox
 import cv2
 import numpy as np
 import uploader.uploader
 from consts import Consts, Folders
+import keyboard  # Import the keyboard library
 
 
 class ImageAnnotation:
     def __init__(self, image,date = None):
         self.img = cv2.resize(image, (640, 480))
+        self.img_copy = copy.deepcopy(self.img)
         self.mask = np.zeros((self.img.shape[0], self.img.shape[1]), np.uint8)
         self.mask = cv2.resize(self.mask, (640, 480))
         self.date = date
@@ -43,17 +46,20 @@ class ImageAnnotation:
                         Consts.font_thickness, cv2.LINE_AA)
             cv2.imshow('image', self.img)
             key = cv2.waitKey(1) & 0xFF
+
             if key == 27:  # esc key
                 break
-            if key == 13:
+            elif key == 13:
                 cv2.destroyWindow('image')
                 cv2.imshow("image", self.img)
-                result = messagebox.askyesno("Confirmation", "Are you sure you want to upload this mask to the database?")
+                result = messagebox.askyesno("Confirmation",
+                                             "Are you sure you want to upload this mask to the database?")
                 if result:
                     self.upload_mask()
                     break
                 else:
                     break
+
 
 if __name__ == "__main__":
     image_path = r'C:\Users\Evyatar\PycharmProjects\placenta\placenta_example4.jpg'
