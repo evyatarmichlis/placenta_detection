@@ -56,7 +56,6 @@ class PlacentaImageUploader:
                         if side == "maternal":
                             annotate_result = messagebox.askyesno("Annotate",
                                                                   "Do you want to annotate the image?")
-
                             if annotate_result:
                                 annotation_tool = ImageAnnotation(color_frame, date=self.date)
                                 annotation_tool.display_image_with_mask()
