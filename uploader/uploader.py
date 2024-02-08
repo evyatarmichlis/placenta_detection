@@ -21,7 +21,12 @@ class GoogleDriveUploader:
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except Exception as error:
+                    print(f"An error occurred: {error}")
+                flow = InstalledAppFlow.from_client_secrets_file("credentials.json", self.SCOPES)
+                creds = flow.run_local_server(port=0)
             else:
                 flow = InstalledAppFlow.from_client_secrets_file("credentials.json", self.SCOPES)
                 creds = flow.run_local_server(port=0)
@@ -80,7 +85,7 @@ class GoogleDriveUploader:
         except Exception as error:
             print(f"An error occurred: {error}")
 
-# if __name__ == "__main__":
-#     uploader = GoogleDriveUploader()
-#     image_paths = [r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg",r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example4.jpg"]
-#     uploader.upload_to_drive(image_paths)
+if __name__ == "__main__":
+    uploader = GoogleDriveUploader()
+    image_paths = r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg"
+    uploader.upload_to_drive(image_paths)

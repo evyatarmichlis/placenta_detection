@@ -8,14 +8,17 @@ from consts import Folders
 
 
 class ImageAnnotation:
-    def __init__(self, image, date=None):
+    def __init__(self, image, date=None,upload_online=False):
         self.img = cv2.resize(image, (640, 480))
         self.img_copy = copy.deepcopy(self.img)
         self.mask = np.zeros((self.img.shape[0], self.img.shape[1]), np.uint8)
         self.date = date
+        self.upload_online = upload_online
         if not self.date:
             self.date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.up = uploader.uploader.GoogleDriveUploader()
+        self.up = None
+        if self.upload_online:
+            self.up = uploader.uploader.GoogleDriveUploader()
         self.draw_enabled = True
         self.setup_window()
 
@@ -35,7 +38,8 @@ class ImageAnnotation:
     def upload_mask(self):
         mask_image_path = f"Images/color_images/mask-image_{self.date}.jpg"
         cv2.imwrite(mask_image_path, self.mask)
-        self.up.upload_to_drive(mask_image_path, Folders.mask_folder)
+        if self.upload_online:
+            self.up.upload_to_drive(mask_image_path, Folders.mask_folder)
 
     def display_image_with_mask(self):
         done = False

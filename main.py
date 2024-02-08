@@ -12,15 +12,18 @@ import requests
 
 
 class PlacentaImageUploader:
-    def __init__(self):
-        self.dc = DepthCamera()
-        self.up = GoogleDriveUploader()
+    def __init__(self, upload_online=False,clipping_distance_in_meters=-1.0):
+        self.upload_online = upload_online
+        self.up = None
+        if self.upload_online:
+            self.up = GoogleDriveUploader()
+        self.dc = DepthCamera(clipping_distance_in_meters=clipping_distance_in_meters)
         self.date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     def display_live_preview(self):
         for side in ["maternal"]:
             while True:
-                ret, depth_frame, color_frame,depth_color_image = self.dc.get_frame()
+                ret, depth_frame, color_frame, depth_color_image = self.dc.get_frame()
                 display_frame = color_frame.copy()
                 center_coordinates = (display_frame.shape[1] // 2, display_frame.shape[0] // 2)
                 cv2.circle(display_frame, center_coordinates, Consts.circle_radius, Consts.circle_color,
@@ -50,14 +53,15 @@ class PlacentaImageUploader:
                     if result:
                         cv2.imshow("Image", color_frame)
 
-                        self.upload_images(depth_color_image, color_frame,side)
-                        self.save_and_upload_csv(depth_frame,side)
+                        self.upload_images(depth_color_image, color_frame, side)
+                        self.save_and_upload_csv(depth_frame, side)
 
                         if side == "maternal":
                             annotate_result = messagebox.askyesno("Annotate",
                                                                   "Do you want to annotate the image?")
                             if annotate_result:
-                                annotation_tool = ImageAnnotation(color_frame, date=self.date)
+                                annotation_tool = ImageAnnotation(color_frame, date=self.date,
+                                                                  upload_online=self.upload_online)
                                 annotation_tool.display_image_with_mask()
                             break
                     break
@@ -65,20 +69,21 @@ class PlacentaImageUploader:
             cv2.destroyAllWindows()
         self.send_message("new sample has been added")
 
-    def upload_images(self, depth_frame, color_frame,side):
+    def upload_images(self, depth_frame, color_frame, side):
         depth_image_path = f"Images/depth_images/{side}_depth-image_{self.date}.jpg"
         color_image_path = f"Images/color_images/{side}_color-image_{self.date}.jpg"
         cv2.imwrite(depth_image_path, depth_frame)
         cv2.imwrite(color_image_path, color_frame)
-        self.up.upload_to_drive(depth_image_path, Folders.depth_folder)
-        self.up.upload_to_drive(color_image_path, Folders.color_folder)
+        if self.upload_online:
+            self.up.upload_to_drive(depth_image_path, Folders.depth_folder)
+            self.up.upload_to_drive(color_image_path, Folders.color_folder)
 
     def save_and_upload_csv(self, depth_frame, side):
         depth_frame_pd = pd.DataFrame(depth_frame)
         csv_path = f"Images/csv_data/raw_depth_{side}_data_{self.date}.csv"
         depth_frame_pd.to_csv(csv_path, index=False)
-        self.up.upload_csv_to_drive(csv_path, Folders.depth_csv_folder)
-
+        if self.upload_online:
+            self.up.upload_csv_to_drive(csv_path, Folders.depth_csv_folder)
 
     def send_message(self, message):
         url = f"https://api.telegram.org/bot" \
@@ -91,5 +96,6 @@ class PlacentaImageUploader:
 
 
 if __name__ == "__main__":
-    uploader = PlacentaImageUploader()
+    clipping_distance_in_meters = 0.4
+    uploader = PlacentaImageUploader(upload_online=True,clipping_distance_in_meters=clipping_distance_in_meters)
     uploader.display_live_preview()
