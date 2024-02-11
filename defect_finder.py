@@ -142,7 +142,7 @@ class DefectsFinder:
 
         depth_data = pd.read_csv(depth_csv_path)
 
-        # Apply the mask to crop all images
+
         cropped_image = np.where(segment_3d == True, image, 0)
         cropped_color_map = np.where(segment_3d == True, color_map, 0)
         cropped_depth_data = np.where(segment == True, depth_data, 0)
