@@ -8,6 +8,7 @@ import os
 import skimage as ski
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
+from PIL import Image
 
 class DefectsFinder:
 
@@ -31,8 +32,8 @@ class DefectsFinder:
         for ann in sorted_anns[:4]:
             masd_dict = {"segmentation": ann['segmentation'], "area": ann['area']}
             m = ann['segmentation']
-            if not (m[0:50, :].any()) and not (m[-50:, :].any()) and not (m[:, 0:50].any()) \
-                    and not (m[:, -50:].any()) and (m[:, m.shape[1] // 2 - 50:m.shape[1] // 2 + 50].any()):
+            if not (m[0:50, :].any()) and not (m[-40:, :].any()) and not (m[:, 0:40].any()) \
+                    and not (m[:, -40:].any()) and (m[:, m.shape[1] // 2 - 40:m.shape[1] // 2 + 40].any()):
                 possibole_segment.append(masd_dict)
         if len(possibole_segment) > 0:
             final_mask = sorted(possibole_segment, key=lambda x: x['area'])[0]
@@ -141,12 +142,9 @@ class DefectsFinder:
         segment_3d = np.dstack((segment, segment, segment))
 
         depth_data = pd.read_csv(depth_csv_path)
-
-
         cropped_image = np.where(segment_3d == True, image, 0)
         cropped_color_map = np.where(segment_3d == True, color_map, 0)
         cropped_depth_data = np.where(segment == True, depth_data, 0)
-
         return cropped_image, cropped_color_map, cropped_depth_data
 
     def combine_mask_with_color_map(self,color_map, mask_path, alpha=0.5):
@@ -158,5 +156,27 @@ class DefectsFinder:
 
 
 defect =DefectsFinder()
-image_path=r"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color images/maternal_color-image_2024-02-08_13-22-37.jpg"
-defect.contour_detection(image_path)
+date_of_image = "02-08_13-02-11"
+image_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color images/maternal_color-image_2024-{date_of_image}.jpg"
+
+depth_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color map/maternal_depth-image_2024-{date_of_image}.jpg"
+
+depth_csv = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/depth matirx/raw_depth_maternal_data_2024-{date_of_image}.csv"
+cropped_image, cropped_color_map, cropped_depth_data = defect.segment_images(image_path,depth_path,depth_csv)
+
+cropped_image_path = f"cropped_image_{date_of_image}.png"
+cropped_image_pil = Image.fromarray(cropped_image)
+cropped_image_pil.save(cropped_image_path)
+
+cropped_color_map_path = f"cropped_color_map_{date_of_image}.png"
+cropped_color_map_pil = Image.fromarray(cropped_color_map)
+cropped_color_map_pil.save(cropped_color_map_path)
+
+cropped_depth_data_path = f"cropped_depth_data{date_of_image}.csv"
+cropped_depth_df = pd.DataFrame(cropped_depth_data)
+cropped_depth_df.to_csv(cropped_depth_data_path, index=False)
+
+plt.imshow(cropped_color_map)
+plt.show()
+plt.imshow(cropped_image)
+plt.show()
