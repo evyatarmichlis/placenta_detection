@@ -156,7 +156,7 @@ class DefectsFinder:
 
 
 defect =DefectsFinder()
-date_of_image = "02-08_13-03-35"
+date_of_image = "02-08_13-23-37"
 image_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color images/maternal_color-image_2024-{date_of_image}.jpg"
 
 depth_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color map/maternal_depth-image_2024-{date_of_image}.jpg"
