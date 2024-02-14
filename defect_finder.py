@@ -145,7 +145,7 @@ class DefectsFinder:
         cropped_image = np.where(segment_3d == True, image, 0)
         cropped_color_map = np.where(segment_3d == True, color_map, 0)
         cropped_depth_data = np.where(segment == True, depth_data, 0)
-        return cropped_image, cropped_color_map, cropped_depth_data
+        return cropped_image, cropped_color_map, cropped_depth_data,segment
 
     def combine_mask_with_color_map(self,color_map, mask_path, alpha=0.5):
         mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
@@ -162,7 +162,11 @@ image_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/
 depth_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color map/maternal_depth-image_2024-{date_of_image}.jpg"
 
 depth_csv = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/depth matirx/raw_depth_maternal_data_2024-{date_of_image}.csv"
-cropped_image, cropped_color_map, cropped_depth_data = defect.segment_images(image_path,depth_path,depth_csv)
+cropped_image, cropped_color_map, cropped_depth_data,segment = defect.segment_images(image_path,depth_path,depth_csv)
+
+cropped_segment_path = f"cropped_segment_{date_of_image}.png"
+cropped_image_pil = Image.fromarray(segment)
+cropped_image_pil.save(cropped_segment_path)
 
 cropped_image_path = f"cropped_image_{date_of_image}.png"
 cropped_image_pil = Image.fromarray(cropped_image)
