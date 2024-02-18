@@ -67,7 +67,7 @@ class PlacentaImageUploader:
                     break
 
             cv2.destroyAllWindows()
-        self.send_message("new sample has been added")
+        self.send_message(f"new sample has been added. date:{self.date}")
 
     def upload_images(self, depth_frame, color_frame, side):
         depth_image_path = f"Images/depth_images/{side}_depth-image_{self.date}.jpg"

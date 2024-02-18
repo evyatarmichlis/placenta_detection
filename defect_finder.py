@@ -9,10 +9,14 @@ import skimage as ski
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 from PIL import Image
+from skimage.morphology import convex_hull_image
+
+from find_local_max import FindLocalMax
+
 
 class DefectsFinder:
 
-    def __init__(self):
+    def __init__(self,date_of_image=None):
         sys.path.append("..")
         sam_checkpoint = r"/cs/usr/evyatar613/josko_lab/sam_vit_h_4b8939.pth"
         model_type = "vit_h"
@@ -70,8 +74,10 @@ class DefectsFinder:
         plt.show()
 
     def find_placenta_contours(self, image):
-        contours, hierarchy = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        img_contours = cv2.drawContours(image.copy(), contours, -1, (0, 255, 0), 3)
+        contours, hierarchy = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        img_contours = cv2.drawContours(image.copy(), contours, -1, (0, 255, 0), 10)
+        kernel_size = (5, 5)  # Adjust the kernel size as needed
+        img_contours = cv2.GaussianBlur(img_contours, kernel_size, 0)
         return img_contours, contours[0]
 
     def find_convexity_defects(self, contour):
@@ -98,13 +104,8 @@ class DefectsFinder:
         new_img = np.full_like(image, background_color)
         new_img[segment] = image[segment]
         segment = np.where(segment, 1, 0).astype("uint8")
-        img_contours, placenta_contour = self.find_placenta_contours(segment)
-        hull = cv2.convexHull(placenta_contour)
-        hull_img = np.zeros_like(segment)
-        hull_img = cv2.UMat(hull_img)
-        cv2.drawContours(hull_img, [hull], 0, 1, thickness=cv2.FILLED)
-        hull_img = cv2.UMat.get(hull_img)
-        defects = hull_img - segment
+        chull = convex_hull_image(segment)
+        defects = chull - segment
         return defects
 
     def order_connected_components(self, binary_image, original_image, k=3):
@@ -154,33 +155,39 @@ class DefectsFinder:
         color_map_with_mask = cv2.addWeighted(color_map, 1 - alpha, mask_alpha[:, :, :3], alpha, 0)
         return color_map_with_mask
 
+    def save_cropped_data(self,folder_name,date_of_image,segment,cropped_image,cropped_color_map,cropped_depth_data):
+        if not os.path.exists(folder_name):
+            os.mkdir(folder_name)
 
-defect =DefectsFinder()
-date_of_image = "02-08_13-23-37"
-image_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color images/maternal_color-image_2024-{date_of_image}.jpg"
+        cropped_segment_path = rf"{folder_name}/cropped_segment_{date_of_image}.png"
+        cropped_image_pil = Image.fromarray(segment)
+        cropped_image_pil.save(cropped_segment_path)
+        cropped_image_path = rf"{folder_name}/cropped_image_{date_of_image}.png"
+        cropped_image_pil = Image.fromarray(cropped_image)
+        cropped_image_pil.save(cropped_image_path)
+        cropped_color_map_path = rf"{folder_name}/cropped_color_map_{date_of_image}.png"
+        cropped_color_map_pil = Image.fromarray(cropped_color_map)
+        cropped_color_map_pil.save(cropped_color_map_path)
+        cropped_depth_data_path = rf"{folder_name}/cropped_depth_data_{date_of_image}.csv"
+        cropped_depth_df = pd.DataFrame(cropped_depth_data)
+        cropped_depth_df.to_csv(cropped_depth_data_path, index=False)
+        print("Saved the cropped data")
+        return cropped_depth_data_path,cropped_segment_path
 
-depth_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color map/maternal_depth-image_2024-{date_of_image}.jpg"
+if __name__ == '__main__':
 
-depth_csv = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/depth matirx/raw_depth_maternal_data_2024-{date_of_image}.csv"
-cropped_image, cropped_color_map, cropped_depth_data,segment = defect.segment_images(image_path,depth_path,depth_csv)
+    date_of_image = "2024-02-08_13-23-37"
+    defect = DefectsFinder()
 
-cropped_segment_path = f"cropped_segment_{date_of_image}.png"
-cropped_image_pil = Image.fromarray(segment)
-cropped_image_pil.save(cropped_segment_path)
-
-cropped_image_path = f"cropped_image_{date_of_image}.png"
-cropped_image_pil = Image.fromarray(cropped_image)
-cropped_image_pil.save(cropped_image_path)
-
-cropped_color_map_path = f"cropped_color_map_{date_of_image}.png"
-cropped_color_map_pil = Image.fromarray(cropped_color_map)
-cropped_color_map_pil.save(cropped_color_map_path)
-
-cropped_depth_data_path = f"cropped_depth_data{date_of_image}.csv"
-cropped_depth_df = pd.DataFrame(cropped_depth_data)
-cropped_depth_df.to_csv(cropped_depth_data_path, index=False)
-
-plt.imshow(cropped_color_map)
-plt.show()
-plt.imshow(cropped_image)
-plt.show()
+    image_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color images/maternal_color-image_{date_of_image}.jpg"
+    defect.contour_detection(image_path)
+    depth_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color map/maternal_depth-image_{date_of_image}.jpg"
+    depth_csv = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/depth matirx/raw_depth_maternal_data_{date_of_image}.csv"
+    cropped_image, cropped_color_map, cropped_depth_data,segment = defect.segment_images(image_path,depth_path,depth_csv)
+    folder_name = "cropped_data"
+    cropped_depth_data_path,cropped_segment_path = defect.save_cropped_data(folder_name,date_of_image,segment,cropped_image,cropped_color_map,cropped_depth_data)
+    "/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/mask/mask-image_2024-02-08_12-56-50.jpg"
+    mask = cv2.imread(f"samples 8_2/mask/mask-image_{date_of_image}.jpg")
+    mask = cv2.cvtColor(mask, cv2.IMREAD_GRAYSCALE)
+    local_max = FindLocalMax(cropped_depth_data_path,cropped_segment_path,threshold=100,ground_truth=mask)
+    maxima_coords, magnitude, orientation = local_max.detect_local_maxima(plot=True,gt=True)
