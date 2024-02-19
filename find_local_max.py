@@ -3,12 +3,15 @@ import numpy as np
 import pandas as pd
 import scipy.ndimage as ndimage
 import cv2
+from sklearn.cluster import KMeans
+from skimage.morphology import convex_hull_image
 class FindLocalMax:
-    def __init__(self, csv_path,segment_path,threshold=None):
+    def __init__(self, csv_path,segment_path,ground_truth,threshold=None):
         self.csv_path = csv_path
         self.threshold = threshold
         self.data = self.read_csv_and_norm()
         self.maxima_coords = None
+        self.ground_truth = ground_truth
         self.contour=None
         if not self.contour:
             self.get_mask_contour(segment_path)
@@ -23,7 +26,7 @@ class FindLocalMax:
     def distance(self,point1, point2):
         return np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
 
-    def close_to_contour(self,maxima_coords,threshold_distance=40):
+    def close_to_contour(self,maxima_coords,threshold_distance=20):
         filtered_coords = []
         for point in maxima_coords:
             point_close_to_contour = False
@@ -67,10 +70,11 @@ class FindLocalMax:
             optimal_threshold = thresholds[np.argmin(variance)]
         return optimal_threshold
 
-
-    def plotting(self,maxima_coords,slices,magnitude,orientation):
-        # Create subplots
-        fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
+    def plotting(self, maxima_coords, slices, magnitude, orientation, gt):
+        if gt:
+            fig, axs = plt.subplots(nrows=1, ncols=4, figsize=(15, 4))
+        else:
+            fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
 
         # Plot original image with local maxima
         axs[0].imshow(self.data, cmap="gray")
@@ -79,31 +83,42 @@ class FindLocalMax:
         axs[0].set_title("Original Image with Local Maxima")
 
         # Plot gradient magnitude
-        axs[1].imshow(magnitude, cmap="jet")
+        img1 = axs[1].imshow(magnitude, cmap="jet")
         axs[1].set_title("Gradient Magnitude")
+        plt.colorbar(img1, ax=axs[1], orientation='vertical', fraction=0.05)
 
         # Plot gradient orientation
-        axs[2].imshow(orientation, cmap="jet")
+        img2 = axs[2].imshow(orientation, cmap="jet")
         axs[2].set_title("Gradient Orientation [0, 180]")
+        plt.colorbar(img2, ax=axs[2], orientation='vertical', fraction=0.05)
 
         # Exclude points near the edges of the segmented object
         mask = np.zeros_like(self.data, dtype=bool)
         for dy, dx in slices:
             mask[dy.start:dy.stop, dx.start:dx.stop] = True
         mask = np.invert(mask)
-        for ax in axs:
+        for ax in axs[:3]:
             ax.set_facecolor('black')
             ax.imshow(np.ma.masked_array(ax.images[0].get_array(), mask))
 
         # Turn off ticks for each axis
-        for ax in axs:
+        for ax in axs[:3]:
             ax.get_xaxis().set_ticks([])
             ax.get_yaxis().set_ticks([])
 
+        if gt:
+            # Plot ground truth
+            axs[3].imshow(self.ground_truth, cmap="gray")
+            axs[3].set_title("Ground Truth")
+            axs[3].get_xaxis().set_ticks([])
+            axs[3].get_yaxis().set_ticks([])
+
+            # Adjust spacing for ground truth plot
+            plt.subplots_adjust(wspace=0.3)
+
         plt.tight_layout()
         plt.show()
-
-    def detect_local_maxima(self, neighborhood_size=10, plot=True):
+    def detect_local_maxima(self, neighborhood_size=10, plot=True,gt=False):
         if self.threshold is None:
             self.threshold = self.otsu_threshold(self.data, True)
             print(f"Threshold: {self.threshold}")
@@ -121,7 +136,6 @@ class FindLocalMax:
         maxima_coords = np.array([[(dy.start + dy.stop - 1) / 2, (dx.start + dx.stop - 1) / 2] for dy, dx in slices])
         maxima_coords = self.close_to_contour(maxima_coords)
         gray = np.uint8(self.data * 255)
-
         gX = cv2.Sobel(gray, cv2.CV_64F, 1, 0)
         gY = cv2.Sobel(gray, cv2.CV_64F, 0, 1)
 
@@ -129,22 +143,30 @@ class FindLocalMax:
         orientation = np.arctan2(gY, gX) * (180 / np.pi) % 180
 
         if plot:
-            self.plotting(maxima_coords,slices,magnitude,orientation)
-
-        return pd.DataFrame(maxima_coords),pd.DataFrame(magnitude),pd.DataFrame(orientation)
+            self.plotting(maxima_coords,slices,magnitude,orientation,gt)
+        maxima_coords = np.array([[19, 2], [100, 200], [300, 400]])
+        maxima_coords_int = [(int(i), int(j)) for i, j in maxima_coords]
+        df = pd.DataFrame(np.zeros((640, 480), dtype=int))
+        x_coords, y_coords = zip(*maxima_coords_int)
+        df.iloc[y_coords, x_coords] = 1
+        return df,pd.DataFrame(magnitude),pd.DataFrame(orientation)
 
 
 
 if __name__ == '__main__':
     date = '13-23-37'
-    image_path = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/cropped_image_02-08_{date}.png"
-    csv_path = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/cropped_depth_data02-08_{date}.csv"
-    segment_path = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/cropped_segment_02-08_{date}.png"
-    local_max = FindLocalMax(csv_path,segment_path,threshold=150)
-    maxima_coords,magnitude,orientation =local_max.detect_local_maxima(plot=True)
+    csv_path = fr"cropped_data/cropped_depth_data02-08_{date}.csv"
+    segment_path = fr"cropped_data/cropped_segment_02-08_{date}.png"
+    ground_truth_path = r"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/mask/mask-image_2024-02-08_13-23-37.jpg"
+    ground_truth = cv2.imread(ground_truth_path)
+
+    ground_truth = cv2.cvtColor(ground_truth, cv2.IMREAD_GRAYSCALE)
+    local_max = FindLocalMax(csv_path,segment_path,ground_truth=ground_truth,threshold=150)
+    maxima_coords,magnitude,orientation =local_max.detect_local_maxima(plot=True,gt=True)
+
     maxima_coords.to_csv(f"local_maxima_{date}.csv")
-    maxima_coords.to_csv(f"magnitude_{date}.csv")
-    maxima_coords.to_csv(f"orientation_{date}.csv")
+    magnitude.to_csv(f"magnitude_{date}.csv")
+    orientation.to_csv(f"orientation_{date}.csv")
 
 
 
