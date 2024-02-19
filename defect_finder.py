@@ -171,6 +171,7 @@ class DefectsFinder:
         cropped_depth_data_path = rf"{folder_name}/cropped_depth_data_{date_of_image}.csv"
         cropped_depth_df = pd.DataFrame(cropped_depth_data)
         cropped_depth_df.to_csv(cropped_depth_data_path, index=False)
+        plt.imsave(rf"{folder_name}/cropped_depth_data_image_{date_of_image}.png", cropped_depth_data.data, cmap='gray')
         print("Saved the cropped data")
         return cropped_depth_data_path,cropped_segment_path
 
@@ -184,6 +185,7 @@ if __name__ == '__main__':
     depth_path=fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/color map/maternal_depth-image_{date_of_image}.jpg"
     depth_csv = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/depth matirx/raw_depth_maternal_data_{date_of_image}.csv"
     cropped_image, cropped_color_map, cropped_depth_data,segment = defect.segment_images(image_path,depth_path,depth_csv)
+
     folder_name = "cropped_data"
     cropped_depth_data_path,cropped_segment_path = defect.save_cropped_data(folder_name,date_of_image,segment,cropped_image,cropped_color_map,cropped_depth_data)
     "/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/mask/mask-image_2024-02-08_12-56-50.jpg"

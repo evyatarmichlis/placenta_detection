@@ -9,8 +9,11 @@ class DepthCamera:
         self.pipeline = rs.pipeline()
         self.align = rs.align(rs.stream.color)
         config = rs.config()
-        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+        #the model i use need this size
+        image_w,image_h = 384,384
+        config.enable_stream(rs.stream.depth, image_w, image_h, rs.format.z16, 30)
+        config.enable_stream(rs.stream.color, image_w, image_h, rs.format.bgr8, 30)
         # Start streaming
         profile = self.pipeline.start(config)
         depth_sensor = profile.get_device().first_depth_sensor()
