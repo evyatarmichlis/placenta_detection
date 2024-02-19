@@ -15,8 +15,9 @@ class Consts:
 
 
 class Folders:
-    mask_folder = "1Uo8z9TeAFZRQm4j32XNTCidtQMnQMyFQ"
-    placenta_main_folder = "1ME5MT339M7DedPWIgiP4rK_YCaA8NETR"
-    color_folder = "1sSSJWyzFxBNrJFuGtWnAS9HMLfYfQ4QG"
-    depth_folder = "1m6t_Iknz8YAhAeTFAJdDhYCYGKeMSRhF"
-    depth_csv_folder = "1s-nysmekj_1g15olCmplF1jbc71HvSJ2"
+    #the comment fils are evyater michlis gmail drive
+    mask_folder = "1R3UEYqlfbHg7MnwUBBwiHTlc5IL39lg1" #"1Uo8z9TeAFZRQm4j32XNTCidtQMnQMyFQ"
+    placenta_main_folder = "1CVy5oqY6_TRun2SRWSrZVbPrSzqFdbUg" #"1ME5MT339M7DedPWIgiP4rK_YCaA8NETR"
+    color_folder = "1VcpHEoyG4qtpFxsZtduNqmFZgjkv96Ec"  #"1sSSJWyzFxBNrJFuGtWnAS9HMLfYfQ4QG"
+    depth_folder = "15EhbVBLzMjX728IG1MCFeMj1QXfmxkfI"  #"1m6t_Iknz8YAhAeTFAJdDhYCYGKeMSRhF"
+    depth_csv_folder = "1cpY3EsuyKwTvJHKlssngsnmqbUqCkQTV" #1s-nysmekj_1g15olCmplF1jbc71HvSJ2"
