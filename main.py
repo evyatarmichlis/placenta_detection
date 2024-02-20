@@ -95,6 +95,10 @@ class PlacentaImageUploader:
             print(f"Failed to send message. Status code: {response.status_code}")
 
 
+
+
+
+
 if __name__ == "__main__":
     clipping_distance_in_meters = 0.4
     uploader = PlacentaImageUploader(upload_online=True,clipping_distance_in_meters=clipping_distance_in_meters)
