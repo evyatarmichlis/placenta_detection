@@ -1,7 +1,10 @@
+import os
+
 import cv2
 
 
 class Consts:
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
     circle_color = (0, 255, 0)
     circle_radius = 230
     circle_thickness = 2

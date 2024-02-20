@@ -4,7 +4,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-
+import io
+from googleapiclient.http import MediaIoBaseDownload
 import consts
 
 
@@ -84,8 +85,44 @@ class GoogleDriveUploader:
 
         except Exception as error:
             print(f"An error occurred: {error}")
+    def download_files_from_folder(self, folder_id, destination_folder):
+        try:
+            service = build("drive", "v3", credentials=self.creds)
+            results = service.files().list(
+                q=f"'{folder_id}' in parents and trashed=false",
+                fields="files(id, name, mimeType)"
+            ).execute()
+            files = results.get('files', [])
+            if not files:
+                print("No files found.")
+            else:
+                print("Downloading files...")
+                for file in files:
+                    file_id = file['id']
+                    file_name = file['name']
+                    file_mimetype = file['mimeType']
+                    if 'image' in file_mimetype or 'text/csv' in file_mimetype:
+                        request = service.files().get_media(fileId=file_id)
+                        fh = io.FileIO(os.path.join(destination_folder, file_name), 'wb')
+                        downloader = MediaIoBaseDownload(fh, request)
+                        done = False
+                        while done is False:
+                            status, done = downloader.next_chunk()
+                            print(f"Download {int(status.progress() * 100)}%.")
+                        print(f"File '{file_name}' downloaded to '{destination_folder}'.")
+                    else:
+                        print(f"Skipping '{file_name}' as it's not an image or CSV file.")
+        except Exception as error:
+            print(f"An error occurred: {error}")
 
 if __name__ == "__main__":
+
+
+
+
+
     uploader = GoogleDriveUploader()
-    image_paths = r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg"
-    uploader.upload_to_drive(image_paths)
+    dest = fr"{consts.Consts.ROOT_DIR}\drive_downloads"
+    uploader.download_files_from_folder( folder_id=consts.Folders.placenta_main_folder, destination_folder=dest)
+    # image_paths = r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg"
+    # uploader.upload_to_drive(image_paths)
