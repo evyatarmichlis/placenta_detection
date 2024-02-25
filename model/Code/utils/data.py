@@ -1,3 +1,4 @@
+
 import os
 from PIL import Image
 import torch.utils.data as data
@@ -5,6 +6,9 @@ import torchvision.transforms as transforms
 import random
 import numpy as np
 from PIL import ImageEnhance
+
+import consts
+
 
 # several data augumentation strategies
 def cv_random_flip(img, label, depth):
@@ -97,7 +101,7 @@ def randomPeper(img):
 class SalObjDataset(data.Dataset):
     def __init__(self, image_root, gt_root, depth_root, trainsize):
         self.trainsize = trainsize
-        self.images = [image_root + f for f in os.listdir(image_root) if f.endswith('.jpg')]
+        self.images = [image_root + f for f in os.listdir(image_root) if f.endswith('.jpg') or f.endswith('.png')]
         self.gts = [gt_root + f for f in os.listdir(gt_root) if f.endswith('.jpg')
                     or f.endswith('.png')]
         self.depths = [depth_root + f for f in os.listdir(depth_root) if f.endswith('.bmp')
@@ -416,7 +420,7 @@ def get_loader_var_unlabel(image_root, gt_root, depth_root, batchsize, trainsize
 class test_dataset:
     def __init__(self, image_root, gt_root, depth_root, testsize):
         self.testsize = testsize
-        self.images = [image_root + f for f in os.listdir(image_root) if f.endswith('.jpg')]
+        self.images = [image_root + f for f in os.listdir(image_root) if f.endswith('.jpg')  or f.endswith('.png')]
         self.gts = [gt_root + f for f in os.listdir(gt_root) if f.endswith('.jpg')
                     or f.endswith('.png')]
         self.depths = [depth_root + f for f in os.listdir(depth_root) if f.endswith('.bmp')

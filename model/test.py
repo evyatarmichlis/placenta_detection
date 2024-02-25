@@ -20,14 +20,15 @@ print('USE GPU {}'.format(opt.gpu_id))
 # load the model
 model = XMSNet()
 model.cuda()
-ch = torch.load('./Checkpoint/XMSNet/XMSNet_epoch_best.pth')
+ch = torch.load(r'/cs/usr/evyatar613/josko_lab/Checkpoint/MRNet/XMSNet_epoch_best.pth')
+
 
 model.load_state_dict(ch)
 
 model.eval()
 
 # test
-test_datasets = ['NJU2K', 'NLPR', 'SIP', 'STERE']
+test_datasets = ['PLACENTA']
 
 # test_datasets = ['SSD']
 
@@ -39,7 +40,7 @@ for dataset in test_datasets:
 
     image_root = dataset_path + dataset + '/RGB/'
     gt_root = dataset_path + dataset + '/GT/'
-    depth_root  = dataset_path + dataset + '/depth/'
+    depth_root  = dataset_path + dataset + '/depths/'
     test_loader = test_dataset(image_root, gt_root, depth_root,opt.trainsize)
     for i in range(test_loader.size):
         image, gt,depth, name, image_for_post = test_loader.load_data()

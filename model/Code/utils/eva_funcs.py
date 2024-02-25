@@ -211,7 +211,7 @@ def eval_Smeasure(pred,gt,cuda=True):
 
                 
 def eval_fmeasure(pred, gt, cuda=True):
-    print('eval[FMeasure]:{} dataset with {} method.'.format(self.dataset, self.method))
+    # print('eval[FMeasure]:{} dataset with {} method.'.format(self.dataset, self.method))
     
     beta2 = 0.3
     avg_p, avg_r, img_num = 0.0, 0.0, 0.0
@@ -264,6 +264,8 @@ class Eval_thread():
         
         with torch.no_grad():
             trans = transforms.Compose([transforms.ToTensor()])
+            avg_mae = 0.0
+            img_num = 0.0
             for pred, gt in self.loader:
                 if self.cuda:
                     
@@ -278,7 +280,8 @@ class Eval_thread():
                     img_num += 1.0
             avg_mae /= img_num
             
-            return avg_mae.item()
+            return avg_mae # was orginal  return avg_mae.item()
+
     
     def Eval_fmeasure(self):
         print('eval[FMeasure]:{} dataset with {} method.'.format(self.dataset, self.method))

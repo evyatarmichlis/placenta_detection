@@ -3,13 +3,14 @@ import numpy as np
 import pandas as pd
 import scipy.ndimage as ndimage
 import cv2
-from sklearn.cluster import KMeans
-from skimage.morphology import convex_hull_image
+from PIL import Image
+
+
 class FindLocalMax:
     def __init__(self, csv_path,segment_path,ground_truth,threshold=None):
         self.csv_path = csv_path
         self.threshold = threshold
-        self.data = self.read_csv_and_norm()
+        self.data = self.read_csv_and_norm(save=True)
         self.maxima_coords = None
         self.ground_truth = ground_truth
         self.contour=None
@@ -26,7 +27,7 @@ class FindLocalMax:
     def distance(self,point1, point2):
         return np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
 
-    def close_to_contour(self,maxima_coords,threshold_distance=20):
+    def close_to_contour(self,maxima_coords,threshold_distance=5):
         filtered_coords = []
         for point in maxima_coords:
             point_close_to_contour = False
@@ -40,14 +41,26 @@ class FindLocalMax:
         filtered_coords = np.array(filtered_coords)
         return filtered_coords
 
-    def read_csv_and_norm(self, p=2):
+    def stretch_contrast(self,image):
+        min_val = np.min(image)
+        max_val = np.max(image)
+        stretched_image = (image - min_val) / (max_val - min_val) * 255
+        return stretched_image
+
+    def read_csv_and_norm(self, p=2,save=False):
         my_data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
         image = my_data
         min_non_zero = np.min(image[image != 0])
         # Subtract the minimum non-zero value from all non-zero elements
         image[image != 0] -= min_non_zero - 1
+        image = self.stretch_contrast(image)
         # increase the derivatives
         data = np.power(image, p)
+        if save:
+            data_array = image.astype(np.uint8)  # Convert to uint8
+            image = Image.fromarray(data_array[1:, :])
+            image.save(self.csv_path.replace("csv", "png"))
+
         return data
     def otsu_threshold(self,image, min_var=True):
         hist, bins = np.histogram(image, bins=256, range=(0, 256))
@@ -118,6 +131,34 @@ class FindLocalMax:
 
         plt.tight_layout()
         plt.show()
+
+    def crop_image_around_maxima(self, original_image, maxima_coords_df, neighborhood_size=50, plot=False):
+        cropped_images = []
+        patch_indices = []
+        for idx, row in maxima_coords_df.iterrows():
+            for jdx, value in row.items():
+                if value == 1:
+                    y, x = idx, jdx
+                    # Define bounding box around the local maximum
+                    top = max(0, y - neighborhood_size)
+                    bottom = min(original_image.shape[0], y + neighborhood_size)
+                    left = max(0, x - neighborhood_size)
+                    right = min(original_image.shape[1], x + neighborhood_size)
+                    # Crop the region from the original image
+                    cropped_img = original_image[top:bottom, left:right]
+                    patch_indices.append((top, left, bottom, right))
+                    cropped_images.append(cropped_img)
+        combined_image = np.zeros_like(original_image)
+        for patch, (top, left, bottom, right) in zip(cropped_images, patch_indices):
+            combined_image[top:bottom, left:right] = patch
+
+        if plot:
+            plt.imshow(combined_image)
+            plt.title('Combined Cropped Images')
+            plt.show()
+
+        return combined_image
+
     def detect_local_maxima(self, neighborhood_size=10, plot=True,gt=False):
         if self.threshold is None:
             self.threshold = self.otsu_threshold(self.data, True)
@@ -144,29 +185,46 @@ class FindLocalMax:
 
         if plot:
             self.plotting(maxima_coords,slices,magnitude,orientation,gt)
-        maxima_coords = np.array([[19, 2], [100, 200], [300, 400]])
+
         maxima_coords_int = [(int(i), int(j)) for i, j in maxima_coords]
         df = pd.DataFrame(np.zeros((640, 480), dtype=int))
         x_coords, y_coords = zip(*maxima_coords_int)
         df.iloc[y_coords, x_coords] = 1
         return df,pd.DataFrame(magnitude),pd.DataFrame(orientation)
 
+    def convert_csv_to_png(self,csv_path):
+        df = pd.read_csv(csv_path, header=None)
+        data_array = df.values.astype(np.uint8)  # Convert to uint8
+        image = Image.fromarray(data_array[1:, :])
+        image.save(csv_path.replace("csv", "png"))
+
 
 
 if __name__ == '__main__':
-    date = '13-23-37'
-    csv_path = fr"cropped_data/cropped_depth_data02-08_{date}.csv"
-    segment_path = fr"cropped_data/cropped_segment_02-08_{date}.png"
-    ground_truth_path = r"/cs/usr/evyatar613/PycharmProjects/placenta_detection/samples 8_2/mask/mask-image_2024-02-08_13-23-37.jpg"
+
+    #
+    date = '13-02-11'
+    csv_path = f"/cs/usr/evyatar613/PycharmProjects/placenta_detection/model/train_data/cropped_depth_data02-08_{date}.csv"
+    segment_path = fr"/cs/usr/evyatar613/PycharmProjects/placenta_detection/model/train_data/RGB/cropped_image_02-08_{date}.png"
+    ground_truth_path = fr"model/train_data/GT/mask-image_2024-02-08_{date}.jpg"
     ground_truth = cv2.imread(ground_truth_path)
-
     ground_truth = cv2.cvtColor(ground_truth, cv2.IMREAD_GRAYSCALE)
-    local_max = FindLocalMax(csv_path,segment_path,ground_truth=ground_truth,threshold=150)
+    local_max = FindLocalMax(csv_path,segment_path,ground_truth=ground_truth,threshold=2500)
     maxima_coords,magnitude,orientation =local_max.detect_local_maxima(plot=True,gt=True)
-
-    maxima_coords.to_csv(f"local_maxima_{date}.csv")
-    magnitude.to_csv(f"magnitude_{date}.csv")
-    orientation.to_csv(f"orientation_{date}.csv")
-
-
-
+    image = cv2.imread(segment_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    crop_local_max = local_max.crop_image_around_maxima(image,maxima_coords,plot=True)
+    image_csv = cv2.imread(csv_path.replace("csv","png"))
+    image_csv = cv2.cvtColor(image_csv , cv2.IMREAD_GRAYSCALE)
+    cropped_image_csv =crop_local_max
+    cropped_image_csv[crop_local_max == 0] = 0
+    cropped_image_csv_image = Image.fromarray(cropped_image_csv[1:, :])
+    cropped_image_csv_image
+    # cropped_image_csv_image.save( csv_path.replace("csv", "png"))
+"/cs/usr/evyatar613/PycharmProjects/placenta_detection/model/train_data/cropped_depth_data02-08_13-02-11.png"
+    # maxima_coords.to_csv(f"local_maxima_{date}.csv")
+    # magnitude.to_csv(f"magnitude_{date}.csv")
+    # orientation.to_csv(f"orientation_{date}.csv")
+    #
+    #
+    #

@@ -6,8 +6,8 @@ import torchvision.models as models
 from torch.nn import functional as F
 # from Code.lib.Transformer import MaskAttentionTransformerBlock
 from timm.models import create_model
-from model.XMSNet.Code.lib.Transformer import MaskAttentionTransformerBlock
-import model.XMSNet.Code.lib.pvt_v2
+from model.Code.lib.Transformer import MaskAttentionTransformerBlock
+import model.Code.lib.pvt_v2
 
 
 class DWConv(nn.Module):
@@ -400,9 +400,8 @@ class XMSNet(nn.Module):
             drop_block_rate=None,
             )
 
-        if self.pretrained:#pvt模型参数路径
-            self.load_model('./checkpoints/pvt_v2_b5.pth') 
-        
+        if self.pretrained:
+            self.load_model(r'/cs/usr/evyatar613/josko_lab/Checkpoint/MRNet/XMSNet_epoch_best.pth')
         self.layer_dep0 = nn.Conv2d(1, 3, kernel_size=1)
 
         ###############################################
@@ -577,6 +576,6 @@ class XMSNet(nn.Module):
 if __name__ == '__main__':
     rgb = torch.rand((2,3,352,352)).cuda()
     depth = torch.rand((2,1,352,352)).cuda()
-    model = XMSNet(pvt_pretrained=True).cuda()
+    model = XMSNet(pvt_pretrained=False).cuda()
     l = model(rgb,depth)
     print(l.size())

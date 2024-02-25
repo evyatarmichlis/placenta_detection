@@ -6,6 +6,8 @@ import sys
 import numpy as np
 from datetime import datetime
 from torchvision.utils import make_grid
+
+import consts
 from Code.lib.model_pvt import XMSNet
 from Code.utils.data import get_loader, test_dataset
 from Code.utils.utils import clip_gradient, adjust_lr
@@ -14,16 +16,17 @@ import logging
 import torch.backends.cudnn as cudnn
 from Code.utils.options import opt
 import torch.nn as nn
+
 # set the device for training
 
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu_id
 print('USE GPU {}'.format(opt.gpu_id))
-#print('USE GPU {}')
+# print('USE GPU {}')
 
 cudnn.benchmark = True
 
 # build the model
-model = XMSNet()
+model = XMSNet(pvt_pretrained=True)
 if (opt.load is not None):
     model.load_state_dict(torch.load(opt.load))
     print('load model from ', opt.load)
@@ -33,14 +36,14 @@ params = model.parameters()
 optimizer = torch.optim.Adam(params, opt.lr)
 
 
-
-
 def set_random_seed(seed):
-    seed = int(seed)                        # """Set random seed for reproduce"""
+    seed = int(seed)  # """Set random seed for reproduce"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
 # torch.backends.cudnn.deterministic = True
 # torch.backends.cudnn.benchmark = False
 
@@ -49,19 +52,21 @@ def set_random_seed(seed):
 set_random_seed(3407)
 train_image_root = opt.rgb_label_root
 train_gt_root = opt.gt_label_root
-train_depth_root = opt.depth_label_root
+train_depth_root =  opt.depth_label_root
 
-val_image_root = opt.val_rgb_root
-val_gt_root = opt.val_gt_root
-val_depth_root   = opt.val_depth_root
-save_path = './Checkpoint/MRNet/'
+val_image_root =  opt.val_rgb_root
+val_gt_root =  opt.val_gt_root
+val_depth_root =   opt.val_depth_root
+save_path = (r"/cs/usr/evyatar613/josko_lab"
+             r"/Checkpoint/MRNet/")
 
 if not os.path.exists(save_path):
     os.makedirs(save_path)
 
 # load data
 print('load data...')
-train_loader = get_loader(train_image_root, train_gt_root,train_depth_root, batchsize=opt.batchsize, trainsize=opt.trainsize)
+train_loader = get_loader(train_image_root, train_gt_root, train_depth_root, batchsize=opt.batchsize,
+                          trainsize=opt.trainsize)
 test_loader = test_dataset(val_image_root, val_gt_root, val_depth_root, opt.trainsize)
 total_step = len(train_loader)
 
@@ -96,6 +101,17 @@ def structure_loss(pred, mask):
     wiou = 1 - (inter + 1) / (union - inter + 1)
     return (wbce + wiou).mean()
 
+def dice_coefficient(pred, mask):
+    pred_binary = (pred > 0.5).float()
+    mask_binary = (mask > 0.5).float()
+
+    intersection = torch.sum(pred_binary * mask_binary)
+    total = torch.sum(pred_binary) + torch.sum(mask_binary)
+
+    dice = (2. * intersection + 1e-7) / (total + 1e-7)
+
+    return dice
+
 
 def train(train_loader, model, optimizer, epoch, save_path):
     global step
@@ -103,31 +119,30 @@ def train(train_loader, model, optimizer, epoch, save_path):
     loss_all = 0
     epoch_step = 0
     try:
-        for i, (images, gts,depths) in enumerate(train_loader, start=1):
+        for i, (images, gts, depths) in enumerate(train_loader, start=1):
             optimizer.zero_grad()
 
             images = images.cuda()
             gts = gts.cuda()
-            depths   = depths.cuda()
+            depths = depths.cuda()
 
             ##
-            S0,S1,S2,S3,S4,S5,S6= model(images,depths)
+            S0, S1, S2, S3, S4, S5, S6 = model(images, depths)
 
-            loss0    = 0.2*structure_loss(S0, gts)
-            loss1    = 0.4* structure_loss(S1, gts)
-            loss2    = 0.6* structure_loss(S2, gts)
-            loss3    = 0.8* structure_loss(S3, gts)
-            loss4    = 0.3*structure_loss(S4, gts)
-            loss5    = 0.6*structure_loss(S5, gts)
-            loss6    = 0.9*structure_loss(S6, gts)
+            loss0 = 0.2 * structure_loss(S0, gts)
+            loss1 = 0.4 * structure_loss(S1, gts)
+            loss2 = 0.6 * structure_loss(S2, gts)
+            loss3 = 0.8 * structure_loss(S3, gts)
+            loss4 = 0.3 * structure_loss(S4, gts)
+            loss5 = 0.6 * structure_loss(S5, gts)
+            loss6 = 0.9 * structure_loss(S6, gts)
 
-            losskl1   = loss_kl(F.log_softmax(S4, dim=1), F.softmax(S5, dim=1)) + loss_kl(F.log_softmax(S5, dim=1), F.softmax(S4, dim=1))
-            losskl2   =loss_kl(F.log_softmax(S5, dim=1), F.softmax(S6, dim=1)) + loss_kl(F.log_softmax(S6, dim=1), F.softmax(S5, dim=1))
-            loss_seg = loss0 + loss1 + loss2 + loss3 +loss4 + loss5 + loss6+ 0.5* losskl1 + 0.5 * losskl2
+            losskl1 = loss_kl(F.log_softmax(S4, dim=1), F.softmax(S5, dim=1)) + loss_kl(F.log_softmax(S5, dim=1),
+                                                                                        F.softmax(S4, dim=1))
+            losskl2 = loss_kl(F.log_softmax(S5, dim=1), F.softmax(S6, dim=1)) + loss_kl(F.log_softmax(S6, dim=1),
+                                                                                        F.softmax(S5, dim=1))
+            loss_seg = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6 + 0.5 * losskl1 + 0.5 * losskl2
 
-
-            
-            
             loss = loss_seg
             loss.backward()
 
@@ -165,12 +180,12 @@ def val(test_loader, model, epoch, save_path):
     with torch.no_grad():
         mae_sum = 0
         for i in range(test_loader.size):
-            image, gt, depth,name, img_for_post = test_loader.load_data()
+            image, gt, depth, name, img_for_post = test_loader.load_data()
             gt = np.asarray(gt, np.float32)
             gt /= (gt.max() + 1e-8)
             image = image.cuda()
-            depth   = depth.cuda()
-            S0,S1,S2,S3,S4,S5,S6 = model(image,depth)
+            depth = depth.cuda()
+            S0, S1, S2, S3, S4, S5, S6 = model(image, depth)
             res = S6
             res = F.upsample(res, size=gt.shape, mode='bilinear', align_corners=False)
             res = res.sigmoid().data.cpu().numpy().squeeze()
