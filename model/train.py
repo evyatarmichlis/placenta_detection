@@ -92,7 +92,8 @@ print(len(train_loader))
 
 def structure_loss(pred, mask):
     weit = 1 + 5 * torch.abs(F.avg_pool2d(mask, kernel_size=31, stride=1, padding=15) - mask)
-    wbce = F.binary_cross_entropy_with_logits(pred, mask, reduce='none')
+    weights = torch.where(mask==0,torch.tensor(2.0),torch.tensor(1.0)) #TODO check if works! I ADDED THIS
+    wbce = F.binary_cross_entropy_with_logits(pred, mask, weight=weights,reduce='none')
     wbce = (weit * wbce).sum(dim=(2, 3)) / weit.sum(dim=(2, 3))
 
     pred = torch.sigmoid(pred)

@@ -58,7 +58,7 @@ class FindLocalMax:
         data = np.power(image, p)
         if save:
             data_array = image.astype(np.uint8)  # Convert to uint8
-            image = Image.fromarray(data_array[1:, :])
+            image = Image.fromarray(data_array)
             image.save(self.csv_path.replace("csv", "png"))
 
         return data
@@ -216,12 +216,17 @@ if __name__ == '__main__':
     crop_local_max = local_max.crop_image_around_maxima(image,maxima_coords,plot=True)
     image_csv = cv2.imread(csv_path.replace("csv","png"))
     image_csv = cv2.cvtColor(image_csv , cv2.IMREAD_GRAYSCALE)
-    cropped_image_csv =crop_local_max
-    cropped_image_csv[crop_local_max == 0] = 0
-    cropped_image_csv_image = Image.fromarray(cropped_image_csv[1:, :])
-    cropped_image_csv_image
+    image_csv[crop_local_max[:,:,0] == 0] = 0
+    plt.imshow(image_csv)
+    plt.show()
+    cropped_csv_path= \
+        f"/cs/usr/evyatar613/PycharmProjects/placenta_detection/model/train_data/local_max_cropped_depth_data02-08_{date}.png"
+    cropped_image_csv_image = Image.fromarray(image_csv)
+
+    cropped_image_csv_image.save( cropped_csv_path)
+
+    # cropped_image_csv_image = Image.fromarray(cropped_image_csv[1:, :])
     # cropped_image_csv_image.save( csv_path.replace("csv", "png"))
-"/cs/usr/evyatar613/PycharmProjects/placenta_detection/model/train_data/cropped_depth_data02-08_13-02-11.png"
     # maxima_coords.to_csv(f"local_maxima_{date}.csv")
     # magnitude.to_csv(f"magnitude_{date}.csv")
     # orientation.to_csv(f"orientation_{date}.csv")
