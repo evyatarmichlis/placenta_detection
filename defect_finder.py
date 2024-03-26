@@ -118,17 +118,19 @@ class DefectsFinder:
         k_largest_cc_binary, count = ski.measure.label(k_largest_cc_binary, connectivity=2, return_num=True)
         return k_largest_cc_binary
 
-    def contour_detection(self, image_path):
+    def contour_detection(self, image_path,plot=True):
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         defect = self.placenta_convexity_defects(image)
         k_largest_cc_binary = self.order_connected_components(defect, image)
         colored_label_image = ski.color.label2rgb(k_largest_cc_binary, bg_label=0)
-        fig, ax = plt.subplots()
-        ax.imshow(image)
-        ax.imshow(colored_label_image, alpha=0.4)  # Adjust alpha for transparency
-        ax.axis("off")
-        plt.show()
+        if plot:
+            fig, ax = plt.subplots()
+            ax.imshow(image)
+            ax.imshow(colored_label_image, alpha=0.4)  # Adjust alpha for transparency
+            ax.axis("off")
+            plt.show()
+        return
 
     def segment_images(self, image_path, color_map_path, depth_csv_path):
         # Read the images and CSV file
