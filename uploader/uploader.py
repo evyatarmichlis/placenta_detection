@@ -17,8 +17,8 @@ class GoogleDriveUploader:
 
     def authenticate(self):
         creds = None
-        if os.path.exists("token.json"):
-            creds = Credentials.from_authorized_user_file("token.json", self.SCOPES)
+        if os.path.exists(r"uploader/token.json"):
+            creds = Credentials.from_authorized_user_file(r"uploader/token.json", self.SCOPES)
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
@@ -123,6 +123,6 @@ if __name__ == "__main__":
 
     uploader = GoogleDriveUploader()
     dest = fr"{consts.Consts.ROOT_DIR}\drive_downloads"
-    uploader.download_files_from_folder( folder_id=consts.Folders.placenta_main_folder, destination_folder=dest)
-    # image_paths = r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg"
-    # uploader.upload_to_drive(image_paths)
+    # uploader.download_files_from_folder( folder_id=consts.Folders.placenta_main_folder, destination_folder=dest)
+    image_paths = r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg"
+    uploader.upload_to_drive(image_paths)
