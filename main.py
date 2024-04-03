@@ -12,15 +12,19 @@ import requests
 
 
 class PlacentaImageUploader:
-    def __init__(self, upload_online=False,clipping_distance_in_meters=-1.0):
+    def __init__(self, upload_online=False):
         self.upload_online = upload_online
         self.up = None
         if self.upload_online:
             self.up = GoogleDriveUploader()
-        self.dc = DepthCamera(clipping_distance_in_meters=clipping_distance_in_meters)
+        self.dc = DepthCamera()
         self.date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     def display_live_preview(self):
+        real_defect_msg = messagebox.askyesno("Real defect",
+                                              "This image contain real defect?")
+
+        real_defect = "REAL_DEFECT " if real_defect_msg else ""
         for side in ["maternal"]:
             while True:
                 ret, depth_frame, color_frame, depth_color_image = self.dc.get_frame()
@@ -50,11 +54,12 @@ class PlacentaImageUploader:
 
                     result = messagebox.askyesno("Confirmation",
                                                  "Are you sure you want to upload this image to the database?")
+
                     if result:
                         cv2.imshow("Image", color_frame)
 
-                        self.upload_images(depth_color_image, color_frame, side)
-                        self.save_and_upload_csv(depth_frame, side)
+                        self.upload_images(depth_color_image, color_frame, side, real_defect)
+                        self.save_and_upload_csv(depth_frame, side, real_defect)
 
                         if side == "maternal":
                             annotate_result = messagebox.askyesno("Annotate",
@@ -62,25 +67,25 @@ class PlacentaImageUploader:
                             if annotate_result:
                                 annotation_tool = ImageAnnotation(color_frame, date=self.date,
                                                                   upload_online=self.upload_online)
-                                annotation_tool.display_image_with_mask()
+                                annotation_tool.display_image_with_mask(real_defect)
                             break
                     break
 
             cv2.destroyAllWindows()
-        self.send_message(f"new sample has been added. date:{self.date}")
+        self.send_message(f"{real_defect} new sample has been added. date:{self.date}")
 
-    def upload_images(self, depth_frame, color_frame, side):
-        depth_image_path = f"Images/depth_images/{side}_depth-image_{self.date}.jpg"
-        color_image_path = f"Images/color_images/{side}_color-image_{self.date}.jpg"
+    def upload_images(self, depth_frame, color_frame, side, real_defect=""):
+        depth_image_path = f"C:/Users/evyat/PycharmProjects/placenta_detection/Images/depth_images/{real_defect}{side}_depth-image_{self.date}.jpg"
+        color_image_path = f"C:/Users/evyat/PycharmProjects/placenta_detection/Images/color_images/{real_defect}{side}_color-image_{self.date}.jpg"
         cv2.imwrite(depth_image_path, depth_frame)
         cv2.imwrite(color_image_path, color_frame)
         if self.upload_online:
             self.up.upload_to_drive(depth_image_path, Folders.depth_folder)
             self.up.upload_to_drive(color_image_path, Folders.color_folder)
 
-    def save_and_upload_csv(self, depth_frame, side):
+    def save_and_upload_csv(self, depth_frame, side, real_defect=""):
         depth_frame_pd = pd.DataFrame(depth_frame)
-        csv_path = f"Images/csv_data/raw_depth_{side}_data_{self.date}.csv"
+        csv_path = rf"C:/Users/evyat/PycharmProjects/placenta_detection/Images/csv_data/{real_defect}raw_depth_{side}_data_{self.date}.csv"
         depth_frame_pd.to_csv(csv_path, index=False)
         if self.upload_online:
             self.up.upload_csv_to_drive(csv_path, Folders.depth_csv_folder)
@@ -94,12 +99,19 @@ class PlacentaImageUploader:
         else:
             print(f"Failed to send message. Status code: {response.status_code}")
 
-
-
-
+    def main(self):
+        i = 1
+        while True:
+            print(f"This is image number {i}")
+            i += 1
+            self.display_live_preview()
+            response = messagebox.askyesno("Take Another Image", "Do you want to take another image?")
+            if not response:
+                print("Stopping the process.")
+                break
 
 
 if __name__ == "__main__":
-    clipping_distance_in_meters = 0.4
-    uploader = PlacentaImageUploader(upload_online=True,clipping_distance_in_meters=clipping_distance_in_meters)
-    uploader.display_live_preview()
+    clipping_distance_in_meters = 0.8
+    uploader = PlacentaImageUploader(upload_online=True)
+    uploader.main()
