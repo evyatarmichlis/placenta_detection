@@ -17,23 +17,32 @@ class GoogleDriveUploader:
 
     def authenticate(self):
         creds = None
-        if os.path.exists("token.json"):
-            creds = Credentials.from_authorized_user_file("token.json", self.SCOPES)
+        token_path = r"C:\Users\evyat\PycharmProjects\placenta_detection\uploader\token.json"
+        credentials_path = r"C:\Users\evyat\PycharmProjects\placenta_detection\uploader\credentials.json"
+
+        if os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, self.SCOPES)
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
                 except Exception as error:
-                    print(f"An error occurred: {error}")
-                flow = InstalledAppFlow.from_client_secrets_file("credentials.json", self.SCOPES)
-                creds = flow.run_local_server(port=0)
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file("credentials.json", self.SCOPES)
-                creds = flow.run_local_server(port=0)
+                    print(f"An error occurred while refreshing credentials: {error}")
+                    return None  # Return None to indicate failure
 
-            with open("token.json", "w") as token:
+            else:
+                try:
+                    flow = InstalledAppFlow.from_client_secrets_file(credentials_path, self.SCOPES)
+                    creds = flow.run_local_server(port=0)
+                except Exception as error:
+                    print(f"An error occurred during authentication: {error}")
+                    return None  # Return None to indicate failure
+
+            # Save the refreshed/updated credentials
+            with open(token_path, "w") as token:
                 token.write(creds.to_json())
+
         return creds
 
     def upload_to_drive(self, image_path, folder_id=consts.Folders.placenta_main_folder):
@@ -116,13 +125,8 @@ class GoogleDriveUploader:
             print(f"An error occurred: {error}")
 
 if __name__ == "__main__":
-
-
-
-
-
     uploader = GoogleDriveUploader()
     dest = fr"{consts.Consts.ROOT_DIR}\drive_downloads"
-    uploader.download_files_from_folder( folder_id=consts.Folders.placenta_main_folder, destination_folder=dest)
-    # image_paths = r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg"
-    # uploader.upload_to_drive(image_paths)
+    # uploader.download_files_from_folder( folder_id=consts.Folders.placenta_main_folder, destination_folder=dest)
+    image_paths = r"C:\Users\Evyatar\PycharmProjects\placenta\placenta_example3.jpg"
+    uploader.upload_to_drive(image_paths)
