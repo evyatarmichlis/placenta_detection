@@ -147,7 +147,7 @@ import json
 import random
 from sklearn.model_selection import train_test_split
 
-def create_json_data(data_folder, min_examples, output_folder, train_split=0.6, val_split=0.2):
+def create_json_data(data_folder, min_examples, output_folder, train_split=0.5, val_split=0.25):
     """Creates JSON files with distinct classes for few-shot train, val, and test sets.
 
     Args:
@@ -227,33 +227,28 @@ def select_and_move_images(data_folder, min_examples, output_dir, num_images):
             ]
 
             if len(images_in_class) >= min_examples:
-                # Randomly select images
-                selected_images = random.sample(images_in_class, min(num_images, len(images_in_class)))
-
-                # Create class folder in the output directory
+                random.shuffle(images_in_class)
+                selected_images = images_in_class[:50]
                 output_class_dir = os.path.join(output_dir, class_folder)
                 os.makedirs(output_class_dir, exist_ok=True)
 
-                # Move selected images
                 for image_path in selected_images:
                     shutil.copy2(image_path, output_class_dir)
 
-# if __name__ == "__main__":
-#     DATA_FOLDER = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB"
-#     MIN_EXAMPLES_PER_CLASS = 100
-#     RGB_100_DIR = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_100"
-#     NUM_IMAGES_PER_CLASS = 100
-#     select_and_move_images(DATA_FOLDER, MIN_EXAMPLES_PER_CLASS, RGB_100_DIR, NUM_IMAGES_PER_CLASS)
-#
-#
-
-
-
 if __name__ == "__main__":
-    DATA_FOLDER = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_100"
-    MIN_EXAMPLES_PER_CLASS = 100
+    DATA_FOLDER = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/RGB"
+    MIN_EXAMPLES_PER_CLASS = 50
+    RGB_50_DIR = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_50"
+    NUM_IMAGES_PER_CLASS = 50
+    select_and_move_images(DATA_FOLDER, MIN_EXAMPLES_PER_CLASS, RGB_50_DIR, NUM_IMAGES_PER_CLASS)
+    DATA_FOLDER = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_50"
+    MIN_EXAMPLES_PER_CLASS = 50
     OUTPUT_FOLDER ="/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/json_files"
     create_json_data(DATA_FOLDER, MIN_EXAMPLES_PER_CLASS, OUTPUT_FOLDER)
+
+
+
+
 
 
 

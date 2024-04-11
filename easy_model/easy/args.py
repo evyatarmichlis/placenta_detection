@@ -59,8 +59,12 @@ parser.add_argument("--ema", type=float, default=0, help="use exponential moving
 ### pytorch options
 parser.add_argument("--device", type=str, default="cuda:0", help="device(s) to use, for multiple GPUs try cuda:ijk, will not work with 10+ GPUs")
 # parser.add_argument("--dataset-path" ,type=str, default="", help="dataset path")
-
+# parser.add_argument("--dataset-path" ,type=str, default="/cs/usr/evyatar613/Desktop/josko_lab/downloads/MiniImageNetDatabase", help="dataset path")
 parser.add_argument("--dataset-path" ,type=str, default="/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset", help="dataset path")
+
+
+
+
 parser.add_argument("--dataset-device", type=str, default="", help="use a different device for storing the datasets (use 'cpu' if you are lacking VRAM)")
 parser.add_argument("--deterministic", action="store_true", help="use desterministic randomness for reproducibility")
 
@@ -68,15 +72,24 @@ parser.add_argument("--deterministic", action="store_true", help="use destermini
 parser.add_argument("--skip-epochs", type=int, default="0", help="number of epochs to skip before evaluating few-shot performance")
 parser.add_argument("--runs", type=int, default=1, help="number of runs")
 parser.add_argument("--quiet", action="store_true", help="prevent too much display of info")
+
+
+# parser.add_argument("--dataset", type=str, default="miniimagenet", help="dataset to use")
 parser.add_argument("--dataset", type=str, default="evyatar", help="dataset to use")
+
+
+
 parser.add_argument("--dataset-size", type=int, default=-1, help="number of training samples (using a subset for classical classification, and reducing size of epochs for few-shot)")
 parser.add_argument("--output", type=str, default="", help="output file to write")
 parser.add_argument("--save-features", type=str, default="", help="save features to file")
 parser.add_argument("--save-model", type=str, default="/cs/usr/evyatar613/josko_lab/easymodel/evyatar.pth", help="save model to file")
 parser.add_argument("--test-features", type=str, default="", help="test features and exit")
-parser.add_argument("--load-model", type=str, default="", help="load model from file")
 parser.add_argument("--seed", type=int, default=-1, help="set random seed manually, and also use deterministic approach")
 parser.add_argument("--wandb", type=str, default='', help="Report to wandb, input is the entity name")
+
+
+parser.add_argument("--fine_tuning_strategy", type=str, default='full_fine_tuning', help="fine tune existing model")
+parser.add_argument("--load-model", type=str, default="/cs/usr/evyatar613/Desktop/josko_lab/easymodel/modelImageNet1.pth1", help="load model from file")
 
 ### few-shot parameters
 parser.add_argument("--n-shots", type=str, default="[1,5]", help="how many shots per few-shot run, can be int or list of ints. In case of episodic training, use first item of list as number of shots.")

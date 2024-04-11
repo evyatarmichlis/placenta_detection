@@ -184,6 +184,11 @@ def train_complete(model, loaders, mixup = False):
             length = len(train_loader)
 
         if (args.cosine and epoch % args.milestones[0] == 0) or epoch == 0:
+            if args.fine_tuning_strategy == 'full_fine_tuning':  # Fine-tuning condition
+                lr = lr * 0.1  # Adjust learning rate for fine-tuning
+            else:
+                lr = lr
+
             if lr < 0:
                 optimizer = torch.optim.Adam(model.parameters(), lr = -1 * lr)
             else:
@@ -235,6 +240,9 @@ loaders, input_shape, num_classes, few_shot, top_5 = datasets.get_dataset(args.d
 ### initialize few-shot meta data
 if few_shot:
     num_classes, val_classes, novel_classes, elements_per_class = num_classes
+    #novel_classes = 4, val_classes=2, element_per_class=100
+
+    #in imagenet novel_classes = 20, val_classes=16, element_per_class=600
 
     if args.dataset.lower() in ["tieredimagenet", "cubfs"]:
         elements_train, elements_val, elements_novel = elements_per_class
@@ -243,7 +251,9 @@ if few_shot:
         elements_train = None
     print("Dataset contains",num_classes,"base classes,",val_classes,"val classes and",novel_classes,"novel classes.")
     print("Generating runs... ", end='')
-
+    #Dataset contains 13 base classes, 2 val classes and 4 novel classes.
+    #elemnt_val = 100,100
+    # args.n_queries=15
     val_runs = list(zip(*[few_shot_eval.define_runs(args.n_ways, s, args.n_queries, val_classes, elements_val) for s in args.n_shots]))
     val_run_classes, val_run_indices = val_runs[0], val_runs[1]
     novel_runs = list(zip(*[few_shot_eval.define_runs(args.n_ways, s, args.n_queries, novel_classes, elements_novel) for s in args.n_shots]))
@@ -326,8 +336,19 @@ for i in range(args.runs):
         wandb.log({"run": i})
     model = create_model()
     if args.load_model != "":
-        model.load_state_dict(torch.load(args.load_model, map_location=torch.device(args.device)))
-        model.to(args.device)
+        pretrained_state_dict = torch.load(args.load_model, map_location=torch.device(args.device))
+        model_state_dict = model.state_dict()
+
+        for name, param in pretrained_state_dict.items():
+            if name in model_state_dict and param.shape == model_state_dict[name].shape:
+                model_state_dict[name].copy_(param)
+
+        model.load_state_dict(model_state_dict)
+
+    if args.fine_tuning_strategy == 'full_fine_tuning':
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr * 0.1)  # Example: lower learning rate
+    else:
+        optimizer = torch.optim.Adam(model.fc.parameters(), lr=args.lr)  # Train only new layers
 
     if len(args.devices) > 1:
         model = torch.nn.DataParallel(model, device_ids = args.devices)

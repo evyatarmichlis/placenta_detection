@@ -1,4 +1,5 @@
 import pickle
+from collections import Counter
 
 from torchvision import transforms, datasets
 from args import args
@@ -357,6 +358,7 @@ def evyatar_dataset():
         image_names = json_data['image_names']
         image_labels = json_data['image_labels']
         label_names = json_data['label_names']
+        label_counts = Counter(image_labels)
 
         classes = list(set(image_labels))  # Extract unique classes
         class_to_idx = {cls: i for i, cls in enumerate(classes)}
@@ -384,9 +386,6 @@ def evyatar_dataset():
 
     return ((train_loader, train_clean, val_loader, test_loader), [3, 84, 84],
             (train_label_number+test_val_number+test_label_number, test_val_number, test_label_number, len(datasets["train"][1])//train_label_number), True, False)
-
-
-
 
 
 
