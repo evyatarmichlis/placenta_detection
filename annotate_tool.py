@@ -35,13 +35,13 @@ class ImageAnnotation:
                 cv2.circle(self.img, (x, y), 10, 255, -1)
                 cv2.circle(self.mask, (x, y), 10, 255, -1)
 
-    def upload_mask(self):
-        mask_image_path = f"Images/color_images/mask-image_{self.date}.jpg"
+    def upload_mask(self,real_defect):
+        mask_image_path = f"C:/Users/evyat/PycharmProjects/placenta_detection/Images/color_images/{real_defect}mask-image_{self.date}.jpg"
         cv2.imwrite(mask_image_path, self.mask)
         if self.upload_online:
             self.up.upload_to_drive(mask_image_path, Folders.mask_folder)
 
-    def display_image_with_mask(self):
+    def display_image_with_mask(self,real_defect):
         done = False
         while not done:
             center_coordinates = (self.img.shape[1] // 2, self.img.shape[0] // 2)
@@ -64,7 +64,7 @@ class ImageAnnotation:
                 result = messagebox.askyesno("Confirmation",
                                              "Are you sure you want to upload this mask to the database?")
                 if result:
-                    self.upload_mask()
+                    self.upload_mask(real_defect)
                     done = True
                 else:
                     break

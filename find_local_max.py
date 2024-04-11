@@ -214,6 +214,9 @@ if __name__ == '__main__':
     image = cv2.imread(segment_path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     crop_local_max = local_max.crop_image_around_maxima(image,maxima_coords,plot=True)
+    cropped_csv_path = \
+        f"/cs/usr/evyatar613/PycharmProjects/placenta_detection/model/train_data/local_max_cropped_depth_data02-08_{date}.png"
+    crop_local_max.save( cropped_csv_path)
     image_csv = cv2.imread(csv_path.replace("csv","png"))
     image_csv = cv2.cvtColor(image_csv , cv2.IMREAD_GRAYSCALE)
     image_csv[crop_local_max[:,:,0] == 0] = 0
@@ -221,6 +224,7 @@ if __name__ == '__main__':
     plt.show()
     cropped_csv_path= \
         f"/cs/usr/evyatar613/PycharmProjects/placenta_detection/model/train_data/local_max_cropped_depth_data02-08_{date}.png"
+
     cropped_image_csv_image = Image.fromarray(image_csv)
 
     cropped_image_csv_image.save( cropped_csv_path)
