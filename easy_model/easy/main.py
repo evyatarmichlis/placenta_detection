@@ -161,8 +161,111 @@ def test(model, test_loader):
 
     return { "test_loss" : test_loss / total, "test_acc" : accuracy / total, "test_acc_top_5" : accuracy_top_5 / total}
 
+
+def gradual_unfreezing(epoch):
+    if epoch < 5:
+        pass  # Keep most layers frozen
+    elif 5 <= epoch < 10:
+        # Unfreeze some layers (e.g., last few convolutional blocks):
+        for param in model.conv_layer_4.parameters():
+            param.requires_grad = True
+    else:
+        # Unfreeze more layers (if needed)
+        pass
+
+
 # function to train a model using args.epochs epochs
 # at each args.milestones, learning rate is multiplied by args.gamma
+def train_complete_(model, loaders, mixup=False):
+    global start_time
+    start_time = time.time()
+
+    if few_shot:
+        train_loader, train_clean, val_loader, novel_loader = loaders
+        for i in range(len(few_shot_meta_data["best_val_acc"])):
+            few_shot_meta_data["best_val_acc"][i] = 0
+    else:
+        train_loader, val_loader, test_loader = loaders
+
+    lr = args.lr
+
+    for epoch in range(args.epochs + args.manifold_mixup):
+        if few_shot and args.dataset_size > 0:
+            length = args.dataset_size // args.batch_size + (1 if args.dataset_size % args.batch_size != 0 else 0)
+        else:
+            length = len(train_loader)
+        if args.fine_tuning_strategy == 'full_fine_tuning':
+            gradual_unfreezing(epoch)
+
+        if (args.cosine and epoch % args.milestones[0] == 0) or epoch == 0:
+            if args.fine_tuning_strategy == 'full_fine_tuning':  # Fine-tuning condition
+                lr = lr * 0.1  # Adjust learning rate for fine-tuning
+            else:
+                lr = lr
+
+            if lr < 0:
+                optimizer = torch.optim.Adam(model.parameters(), lr=-1 * lr)
+
+            else:
+                optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4, nesterov=True)
+            if args.cosine:
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.milestones[0] * length)
+                lr = lr * args.gamma
+            else:
+                scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
+                                                                 milestones=list(np.array(args.milestones) * length),
+                                                                 gamma=args.gamma)
+
+        train_stats = train(model, train_loader, optimizer, (epoch + 1), scheduler, mixup=mixup,
+                            mm=epoch >= args.epochs)
+        print(f"train_:{train_stats}")
+
+        if args.save_model != "" and not few_shot:
+            if len(args.devices) == 1:
+                torch.save(model.state_dict(), args.save_model)
+            else:
+                torch.save(model.module.state_dict(), args.save_model)
+
+        if (epoch + 1) > args.skip_epochs:
+            if few_shot:
+                res = few_shot_eval.update_few_shot_meta_data(model, train_clean, novel_loader, val_loader,
+                                                              few_shot_meta_data)
+                for i in range(len(args.n_shots)):
+                    print("val-{:d}: {:.2f}%, nov-{:d}: {:.2f}% ({:.2f}%) ".format(args.n_shots[i], 100 * res[i][0],
+                                                                                   args.n_shots[i], 100 * res[i][2],
+                                                                                   100 *
+                                                                                   few_shot_meta_data["best_novel_acc"][
+                                                                                       i]), end='')
+                    print(f"train_:{train_stats}")
+
+                    if args.wandb:
+                        wandb.log(
+                            {'epoch': epoch, f'val-{args.n_shots[i]}': res[i][0], f'nov-{args.n_shots[i]}': res[i][2],
+                             f'best-nov-{args.n_shots[i]}': few_shot_meta_data["best_novel_acc"][i]}, (f"train_:{train_stats}")
+)
+
+                print()
+            else:
+                test_stats = test(model, test_loader)
+                if top_5:
+                    print("top-1: {:.2f}%, top-5: {:.2f}%".format(100 * test_stats["test_acc"],
+                                                                  100 * test_stats["test_acc_top_5"]))
+                else:
+                    print("test acc: {:.2f}%".format(100 * test_stats["test_acc"]))
+
+    if args.epochs + args.manifold_mixup <= args.skip_epochs:
+        if few_shot:
+            res = few_shot_eval.update_few_shot_meta_data(model, train_clean, novel_loader, val_loader,
+                                                          few_shot_meta_data)
+        else:
+            test_stats = test(model, test_loader)
+
+    if few_shot:
+        return few_shot_meta_data
+    else:
+        return test_stats
+
+
 def train_complete(model, loaders, mixup = False):
     global start_time
     start_time = time.time()
@@ -177,7 +280,6 @@ def train_complete(model, loaders, mixup = False):
     lr = args.lr
 
     for epoch in range(args.epochs + args.manifold_mixup):
-
         if few_shot and args.dataset_size > 0:
             length = args.dataset_size // args.batch_size + (1 if args.dataset_size % args.batch_size != 0 else 0)
         else:
@@ -191,6 +293,7 @@ def train_complete(model, loaders, mixup = False):
 
             if lr < 0:
                 optimizer = torch.optim.Adam(model.parameters(), lr = -1 * lr)
+
             else:
                 optimizer = torch.optim.SGD(model.parameters(), lr = lr, momentum = 0.9, weight_decay = 5e-4, nesterov = True)
             if args.cosine:
@@ -199,8 +302,8 @@ def train_complete(model, loaders, mixup = False):
             else:
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones = list(np.array(args.milestones) * length), gamma = args.gamma)
 
-        train_stats = train(model, train_loader, optimizer, (epoch + 1), scheduler, mixup = mixup, mm = epoch >= args.epochs)        
-        
+        train_stats = train(model, train_loader, optimizer, (epoch + 1), scheduler, mixup = mixup, mm = epoch >= args.epochs)
+        print(f"train {train_stats}")
         if args.save_model != "" and not few_shot:
             if len(args.devices) == 1:
                 torch.save(model.state_dict(), args.save_model)
@@ -335,20 +438,34 @@ for i in range(args.runs):
             )
         wandb.log({"run": i})
     model = create_model()
+
+    # for name, param in model.named_parameters():#Todo understand finetuning
+    #     if "fc" not in name:  # Assuming 'fc' identifies your last layer
+    #         param.requires_grad_(False)
+    #     else:
+    #         param.requires_grad_(True)
+    #         print("FC")
+
+
     if args.load_model != "":
         pretrained_state_dict = torch.load(args.load_model, map_location=torch.device(args.device))
         model_state_dict = model.state_dict()
 
+
+        num_updated_layers = 0
         for name, param in pretrained_state_dict.items():
             if name in model_state_dict and param.shape == model_state_dict[name].shape:
                 model_state_dict[name].copy_(param)
+                num_updated_layers += 1
 
         model.load_state_dict(model_state_dict)
 
+    model.requires_grad_(True)
+
     if args.fine_tuning_strategy == 'full_fine_tuning':
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr * 0.1)  # Example: lower learning rate
-    else:
-        optimizer = torch.optim.Adam(model.fc.parameters(), lr=args.lr)  # Train only new layers
+    # else:
+    #     optimizer = torch.optim.Adam(model.fc.parameters(), lr=args.lr)  # Train only new layers
 
     if len(args.devices) > 1:
         model = torch.nn.DataParallel(model, device_ids = args.devices)
