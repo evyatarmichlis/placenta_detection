@@ -12,12 +12,30 @@ def define_runs(n_ways, n_shots, n_queries, num_classes, elements_per_class):
     run_classes = torch.LongTensor(n_runs, n_ways).to(args.device)
     run_indices = torch.LongTensor(n_runs, n_ways, n_shots + n_queries).to(args.device)
     for i in range(n_runs):
-        print("run_classes shape before:", run_classes.shape)
         run_classes[i] = torch.randperm(num_classes)[:n_ways]
-        print("run_classes shape after:", run_classes.shape)
         for j in range(n_ways):
             run_indices[i,j] = torch.randperm(elements_per_class[run_classes[i, j]])[:n_shots + n_queries]
     return run_classes, run_indices
+
+
+
+# def define_runs(n_ways, n_shots, n_queries, num_classes, elements_per_class):
+#     shuffle_classes = torch.LongTensor(np.arange(num_classes))
+#     run_classes = torch.full((n_runs, n_ways), -1, dtype=torch.long, device=args.device)  # Initialize with -1
+#     run_indices = torch.LongTensor(n_runs, n_ways, n_shots + n_queries).to(args.device)
+#
+#     for i in range(n_runs):
+#         available_classes = torch.randperm(num_classes)[:min(n_ways, num_classes)]
+#         run_classes[i, :len(available_classes)] = available_classes
+#
+#         for j in range(min(n_ways, num_classes)):
+#             run_indices[i, j] = torch.randperm(elements_per_class[available_classes[j]])[:n_shots + n_queries]
+#
+#     return run_classes, run_indices
+#
+
+
+
 
 def generate_runs(data, run_classes, run_indices, batch_idx):
     n_runs, n_ways, n_samples = run_classes.shape[0], run_classes.shape[1], run_indices.shape[2]
@@ -139,7 +157,7 @@ def get_features(model, loader, n_aug = args.sample_aug):
     model.eval()
     for augs in range(n_aug):
         all_features, offset, max_offset = [], 1000000, 0
-        for batch_idx, (data, target) in enumerate(loader):        
+        for batch_idx, (data, target) in enumerate(loader):
             with torch.no_grad():
                 data, target = data.to(args.device), target.to(args.device)
                 _, features = model(data)
@@ -147,7 +165,7 @@ def get_features(model, loader, n_aug = args.sample_aug):
                 offset = min(min(target), offset)
                 max_offset = max(max(target), max_offset)
         num_classes = max_offset - offset + 1
-        print(".", end='')
+        print("num_classes", end='')
         if augs == 0:
             features_total = torch.cat(all_features, dim = 0).reshape(num_classes, -1, all_features[0].shape[1])
         else:

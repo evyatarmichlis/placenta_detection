@@ -124,20 +124,33 @@ def detect_and_save(image_dir, output_dir):
                 print("didnt found somthing")
 
 
+
 def categories_dir(input_dir, unsorted_folder, folder_name):
-    output_directory = f'/cs/usr/evyatar613/josko_lab/downloads/depthData/train/{folder_name}_by_class/'
-    names = [i.replace(".png", "").replace(".jpg", "") for i in os.listdir(unsorted_folder)]
+    output_directory = (f'/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/'
+                        f'{folder_name}/')
+    names = [os.path.splitext(i)[0] for i in os.listdir(unsorted_folder)]
+
     for category in os.listdir(input_dir):
         curr_category = os.listdir(os.path.join(input_dir, category))
+        if category =='car':
+            print("here")
         for file in curr_category:
             output_image_path = os.path.join(output_directory, category)
             if not os.path.exists(output_image_path):
                 os.makedirs(output_image_path)
-            file_name = file.replace(".png", "").replace(".jpg", "")
+
+            file_name, file_ext = os.path.splitext(file)
+            if file_name =='000110_left':
+                print("here")
             if file_name in names:
-                shutil.copy2(os.path.join(unsorted_folder, file.replace("png", "jpg")),
-                             os.path.join(output_image_path, file.replace("png", "jpg")))
-                # shutil.copy2( os.path.join(unsorted_folder,file), os.path.join(output_image_path,file))
+                for potential_ext in ['.jpg', '.png', '.jpeg','.bmp']:
+                    if potential_ext == 'bmp':
+                        print("bmp")
+                    source_path = os.path.join(unsorted_folder, file_name + potential_ext)
+                    if os.path.exists(source_path):
+                        destination_path = os.path.join(output_image_path, file_name + potential_ext)
+                        shutil.copy2(source_path, destination_path)
+                        break
 
 
 
@@ -147,7 +160,7 @@ import json
 import random
 from sklearn.model_selection import train_test_split
 
-def create_json_data(data_folder, min_examples, output_folder, train_split=0.6, val_split=0.2):
+def create_json_data(data_folder, min_examples, output_folder, train_split=0.5, val_split=0.25):
     """Creates JSON files with distinct classes for few-shot train, val, and test sets.
 
     Args:
@@ -227,36 +240,34 @@ def select_and_move_images(data_folder, min_examples, output_dir, num_images):
             ]
 
             if len(images_in_class) >= min_examples:
-                # Randomly select images
-                selected_images = random.sample(images_in_class, min(num_images, len(images_in_class)))
-
-                # Create class folder in the output directory
+                random.shuffle(images_in_class)
+                selected_images = images_in_class[:50]
                 output_class_dir = os.path.join(output_dir, class_folder)
                 os.makedirs(output_class_dir, exist_ok=True)
 
-                # Move selected images
                 for image_path in selected_images:
                     shutil.copy2(image_path, output_class_dir)
 
-# if __name__ == "__main__":
-#     DATA_FOLDER = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB"
-#     MIN_EXAMPLES_PER_CLASS = 100
-#     RGB_100_DIR = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_100"
-#     NUM_IMAGES_PER_CLASS = 100
-#     select_and_move_images(DATA_FOLDER, MIN_EXAMPLES_PER_CLASS, RGB_100_DIR, NUM_IMAGES_PER_CLASS)
-#
-#
-
-
-
 if __name__ == "__main__":
-    DATA_FOLDER = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_100"
-    MIN_EXAMPLES_PER_CLASS = 100
-    OUTPUT_FOLDER ="/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/json_files"
-    create_json_data(DATA_FOLDER, MIN_EXAMPLES_PER_CLASS, OUTPUT_FOLDER)
+    pass
 
-
-
+    # DATA_FOLDER = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/RGB"
+    # MIN_EXAMPLES_PER_CLASS = 50
+    # RGB_50_DIR = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_50"
+    # NUM_IMAGES_PER_CLASS = 50
+    # select_and_move_images(DATA_FOLDER, MIN_EXAMPLES_PER_CLASS, RGB_50_DIR, NUM_IMAGES_PER_CLASS)
+    # DATA_FOLDER = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_50"
+    # MIN_EXAMPLES_PER_CLASS = 50
+    # OUTPUT_FOLDER ="/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/json_files"
+    # create_json_data(DATA_FOLDER, MIN_EXAMPLES_PER_CLASS, OUTPUT_FOLDER)
+    #
+    # unsorted_folder = "/cs/usr/evyatar613/josko_lab/downloads/depthData/Depth"
+    #
+    # input_dir = "/cs/usr/evyatar613/Desktop/josko_lab/downloads/depthData/class_dataset/images/RGB_50"
+    # categories_dir(input_dir, unsorted_folder, "depth_50")
+    #
+    #
+    #
 
 
 # for dest in ["DES","DUT-RGBD","LFSD","NJU2K","NLPR","ReDWeb-S","SIP","STERE"]:
@@ -272,7 +283,3 @@ if __name__ == "__main__":
 #     process_images_in_directory(image_dir,processor,model,CATEGORIES,output_dir)
 #     print(f"finish {dest}")
 #
-# # input_dir = "/cs/usr/evyatar613/josko_lab/downloads/depthData/train/depths_by_class"
-# # output_dir = "/cs/usr/evyatar613/josko_lab/downloads/depthData/train/RGB"
-# # #
-# # categories_dir(input_dir, output_dir, "RGB")
