@@ -2,9 +2,9 @@ import cv2
 import copy
 import numpy as np
 from datetime import datetime
-import uploader.uploader
 from tkinter import messagebox
 from consts import Folders
+from uploader.dropbox_uploder import DropboxUploader
 
 
 class ImageAnnotation:
@@ -18,7 +18,7 @@ class ImageAnnotation:
             self.date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.up = None
         if self.upload_online:
-            self.up = uploader.uploader.GoogleDriveUploader()
+            self.up = DropboxUploader()
         self.draw_enabled = True
         self.setup_window()
 
@@ -36,10 +36,10 @@ class ImageAnnotation:
                 cv2.circle(self.mask, (x, y), 10, 255, -1)
 
     def upload_mask(self,real_defect):
-        mask_image_path = f"C:/Users/evyat/PycharmProjects/placenta_detection/Images/color_images/{real_defect}mask-image_{self.date}.jpg"
+        mask_image_path = f"C:/Users/evyat/PycharmProjects/placenta_detection/Images/gt/{real_defect}mask-image_{self.date}.jpg"
         cv2.imwrite(mask_image_path, self.mask)
         if self.upload_online:
-            self.up.upload_to_drive(mask_image_path, Folders.mask_folder)
+            self.up.upload_to_dropbox(mask_image_path, '/gt')
 
     def display_image_with_mask(self,real_defect):
         done = False

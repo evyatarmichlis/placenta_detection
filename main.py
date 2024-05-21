@@ -6,7 +6,9 @@ import pandas as pd
 from annotate_tool import ImageAnnotation
 from consts import Consts, Folders
 from realsense_depth import *
+from uploader.dropbox_uploder import DropboxUploader
 from uploader.uploader import GoogleDriveUploader
+
 from datetime import datetime
 import requests
 
@@ -16,14 +18,13 @@ class PlacentaImageUploader:
         self.upload_online = upload_online
         self.up = None
         if self.upload_online:
-            self.up = GoogleDriveUploader()
+            self.up = DropboxUploader()
         self.dc = DepthCamera()
         self.date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     def display_live_preview(self):
         real_defect_msg = messagebox.askyesno("Real defect",
                                               "This image contain real defect?")
-
         real_defect = "REAL_DEFECT " if real_defect_msg else ""
         for side in ["maternal"]:
             while True:
@@ -80,15 +81,21 @@ class PlacentaImageUploader:
         cv2.imwrite(depth_image_path, depth_frame)
         cv2.imwrite(color_image_path, color_frame)
         if self.upload_online:
-            self.up.upload_to_drive(depth_image_path, Folders.depth_folder)
-            self.up.upload_to_drive(color_image_path, Folders.color_folder)
+                self.up.upload_to_dropbox(depth_image_path,'/depth_images')
+                self.up.upload_to_dropbox(color_image_path,'/images')
+
+            #google drive try
+            # self.up.upload_to_drive(depth_image_path, Folders.depth_folder)
+            # self.up.upload_to_drive(color_image_path, Folders.color_folder)
 
     def save_and_upload_csv(self, depth_frame, side, real_defect=""):
         depth_frame_pd = pd.DataFrame(depth_frame)
         csv_path = rf"C:/Users/evyat/PycharmProjects/placenta_detection/Images/csv_data/{real_defect}raw_depth_{side}_data_{self.date}.csv"
         depth_frame_pd.to_csv(csv_path, index=False)
         if self.upload_online:
-            self.up.upload_csv_to_drive(csv_path, Folders.depth_csv_folder)
+            self.up.upload_csv_to_dropbox(csv_path,'/csv_files')
+            #google drive try
+            # self.up.upload_csv_to_drive(csv_path, Folders.depth_csv_folder)
 
     def send_message(self, message):
         url = f"https://api.telegram.org/bot" \
