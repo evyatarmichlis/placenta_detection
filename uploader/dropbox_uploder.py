@@ -46,6 +46,10 @@ class DropboxUploader:
             # If token is expired, refresh it
             self.refresh_access_token()
             dbx = dropbox.Dropbox(self.access_token)
+        except Exception as e:
+            # Catch unexpected errors and return "Expected"
+            print("Unexpected error:", e)
+            return False
         return dbx
 
     def upload_to_dropbox(self, file_path, dropbox_folder):
@@ -78,7 +82,7 @@ class DropboxUploader:
         self.upload_to_dropbox(csv_path, dropbox_folder)
 
 if __name__ == "__main__":
-    token_file = "dropbox_token.txt"
+    token_file = r'C:\Users\evyat\PycharmProjects\placenta_detection\uploader\dropbox_token.txt'
     refresh_token = "ZDhC-N3mwtMAAAAAAAAAAXKuN-TzjTfa_kvRtnVSrcNJ0CHZTQUSol62CXEBRu31"
     client_id = "prrl5bsxyc65kxw"
     client_secret = "hxw3omlgoj9uulz"
@@ -86,7 +90,7 @@ if __name__ == "__main__":
     uploader = DropboxUploader(token_file, refresh_token, client_id, client_secret)
 
     # Upload an image
-    image_path = r"C:\Users\Evyatar\PycharmProjects\placenta_detection\Images\color_images\mask-image_2024-02-08_12-35-29.jpg"
+    image_path = r'C:\Users\evyat\PycharmProjects\placenta_detection\Images\color_images\mask-image_2024-04-11_13-17-54.jpg'
     dropbox_image_folder = '/images'
     uploader.upload_to_dropbox(image_path, dropbox_image_folder)
 
