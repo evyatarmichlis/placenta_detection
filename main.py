@@ -11,21 +11,59 @@ from uploader.uploader import GoogleDriveUploader
 
 from datetime import datetime
 import requests
+import tkinter as tk
+from tkinter import messagebox
 
+class CustomDialog(tk.Toplevel):
+    def __init__(self, parent, options):
+        super().__init__(parent)
+        self.options = options
+        self.result = None
+        self.create_widgets()
+        self.position_center(parent)
+    def position_center(self, parent):
+        # Get the dimensions of the parent window
+
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        dialog_width = self.winfo_reqwidth()
+        dialog_height = self.winfo_reqheight()
+        x = (screen_width - dialog_width) // 2
+        y = (screen_height - dialog_height) // 2
+        self.geometry("+{}+{}".format(x, y))
+    def create_widgets(self):
+        label = tk.Label(self, text="How would you classify this image?")
+        label.pack()
+
+        for option in self.options:
+            button = tk.Button(self, text=option, command=lambda o=option: self.set_result(o))
+            button.pack()
+
+    def set_result(self, value):
+        self.result = value
+        self.destroy()
 
 class PlacentaImageUploader:
     def __init__(self, upload_online=False):
         self.upload_online = upload_online
         self.up = None
         if self.upload_online:
-            self.up = DropboxUploader()
+            token_file = r'C:\Users\evyat\PycharmProjects\placenta_detection\uploader\dropbox_token.txt'
+            refresh_token = "ZDhC-N3mwtMAAAAAAAAAAXKuN-TzjTfa_kvRtnVSrcNJ0CHZTQUSol62CXEBRu31"
+            client_id = "prrl5bsxyc65kxw"
+            client_secret = "hxw3omlgoj9uulz"
+            self.up = DropboxUploader(token_file, refresh_token, client_id, client_secret)
         self.dc = DepthCamera()
         self.date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    def display_live_preview(self):
-        real_defect_msg = messagebox.askyesno("Real defect",
-                                              "This image contain real defect?")
-        real_defect = "REAL_DEFECT " if real_defect_msg else ""
+    def display_live_preview(self,root):
+        options = ["Normal","Real defect", "Twins", "Bipartite", "Preterm" ]
+        dialog = CustomDialog(root, options)
+        root.wait_window(dialog)
+        type_msg = dialog.result
+        print("Selected option:", type_msg)
+
+        type = f'{type_msg} ' if type_msg else ""
         for side in ["maternal"]:
             while True:
                 ret, depth_frame, color_frame, depth_color_image = self.dc.get_frame()
@@ -59,8 +97,8 @@ class PlacentaImageUploader:
                     if result:
                         cv2.imshow("Image", color_frame)
 
-                        self.upload_images(depth_color_image, color_frame, side, real_defect)
-                        self.save_and_upload_csv(depth_frame, side, real_defect)
+                        self.upload_images(depth_color_image, color_frame, side, type)
+                        self.save_and_upload_csv(depth_frame, side, type)
 
                         if side == "maternal":
                             annotate_result = messagebox.askyesno("Annotate",
@@ -68,12 +106,12 @@ class PlacentaImageUploader:
                             if annotate_result:
                                 annotation_tool = ImageAnnotation(color_frame, date=self.date,
                                                                   upload_online=self.upload_online)
-                                annotation_tool.display_image_with_mask(real_defect)
+                                annotation_tool.display_image_with_mask(type)
                             break
                     break
 
             cv2.destroyAllWindows()
-        self.send_message(f"{real_defect} new sample has been added. date:{self.date}")
+        self.send_message(f"{type} new sample has been added. date:{self.date}")
 
     def upload_images(self, depth_frame, color_frame, side, real_defect=""):
         depth_image_path = f"C:/Users/evyat/PycharmProjects/placenta_detection/Images/depth_images/{real_defect}{side}_depth-image_{self.date}.jpg"
@@ -108,10 +146,13 @@ class PlacentaImageUploader:
 
     def main(self):
         i = 1
+        root = tk.Tk()
+
         while True:
             print(f"This is image number {i}")
             i += 1
-            self.display_live_preview()
+            self.date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            self.display_live_preview(root)
             response = messagebox.askyesno("Take Another Image", "Do you want to take another image?")
             if not response:
                 print("Stopping the process.")

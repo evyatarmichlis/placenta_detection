@@ -18,7 +18,11 @@ class ImageAnnotation:
             self.date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.up = None
         if self.upload_online:
-            self.up = DropboxUploader()
+            token_file = r'C:\Users\evyat\PycharmProjects\placenta_detection\uploader\dropbox_token.txt'
+            refresh_token = "ZDhC-N3mwtMAAAAAAAAAAXKuN-TzjTfa_kvRtnVSrcNJ0CHZTQUSol62CXEBRu31"
+            client_id = "prrl5bsxyc65kxw"
+            client_secret = "hxw3omlgoj9uulz"
+            self.up = DropboxUploader(token_file, refresh_token, client_id, client_secret)
         self.draw_enabled = True
         self.setup_window()
 
