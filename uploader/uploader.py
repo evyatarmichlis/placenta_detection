@@ -17,8 +17,8 @@ class GoogleDriveUploader:
 
     def authenticate(self):
         creds = None
-        token_path = r"C:\Users\Evyatar\PycharmProjects\placenta_detection\uploader\token.json"
-        credentials_path = r"C:\Users\Evyatar\PycharmProjects\placenta_detection\uploader\credentials.json"
+        token_path = r"C:\Users\evyat\PycharmProjects\placenta_detection\uploader\token.json"
+        credentials_path = r"C:\Users\evyat\PycharmProjects\placenta_detection\uploader\credentials.json"
 
         if os.path.exists(token_path):
             creds = Credentials.from_authorized_user_file(token_path, self.SCOPES)

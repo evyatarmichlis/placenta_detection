@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -9,6 +12,9 @@ from PIL import Image
 class FindLocalMax:
     def __init__(self, csv_path,segment_path,ground_truth,threshold=None):
         self.csv_path = csv_path
+        self.processed_path = str(
+            Path(csv_path).parent.parent / 'png_files' / Path(csv_path).name.replace('.csv', '.png'))
+        os.makedirs(os.path.dirname(self.processed_path), exist_ok=True)
         self.threshold = threshold
         self.data = self.read_csv_and_norm(save=True)
         self.maxima_coords = None
@@ -47,21 +53,21 @@ class FindLocalMax:
         stretched_image = (image - min_val) / (max_val - min_val) * 255
         return stretched_image
 
-    def read_csv_and_norm(self, p=2,save=False):
+    def read_csv_and_norm(self, p=2, save=False):
         my_data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
         image = my_data
         min_non_zero = np.min(image[image != 0])
-        # Subtract the minimum non-zero value from all non-zero elements
         image[image != 0] -= min_non_zero - 1
         image = self.stretch_contrast(image)
-        # increase the derivatives
         data = np.power(image, p)
+
         if save:
-            data_array = image.astype(np.uint8)  # Convert to uint8
+            data_array = image.astype(np.uint8)
             image = Image.fromarray(data_array)
-            image.save(self.csv_path.replace("csv", "png"))
+            image.save(self.processed_path)
 
         return data
+
     def otsu_threshold(self,image, min_var=True):
         hist, bins = np.histogram(image, bins=256, range=(0, 256))
         hist = hist.astype(float) / hist.sum()
@@ -159,38 +165,61 @@ class FindLocalMax:
 
         return combined_image
 
-    def detect_local_maxima(self, neighborhood_size=10, plot=True,gt=False):
-        if self.threshold is None:
-            self.threshold = self.otsu_threshold(self.data, True)
-            print(f"Threshold: {self.threshold}")
+    def detect_local_maxima(self, neighborhood_size=10, plot=True, gt=False):
+        original_threshold = self.threshold
+        current_threshold = original_threshold
+        max_attempts = 3  # Number of threshold reduction attempts
+        reduction_factor = 0.5  # How much to reduce threshold each time
 
-        # Finding local maxima
-        data_max = ndimage.maximum_filter(self.data, neighborhood_size)
-        maxima = (self.data == data_max)
-        data_min = ndimage.minimum_filter(self.data, neighborhood_size)
-        diff = ((data_max - data_min) > self.threshold)
-        maxima[diff == 0] = 0
+        for attempt in range(max_attempts):
+            if self.threshold is None:
+                current_threshold = self.otsu_threshold(self.data, True)
+            else:
+                current_threshold = original_threshold * (reduction_factor ** attempt)
 
-        # Labeling and finding coordinates of local maxima
-        labeled, num_objects = ndimage.label(maxima)
-        slices = ndimage.find_objects(labeled)
-        maxima_coords = np.array([[(dy.start + dy.stop - 1) / 2, (dx.start + dx.stop - 1) / 2] for dy, dx in slices])
-        maxima_coords = self.close_to_contour(maxima_coords)
+            print(f"Attempting detection with threshold: {current_threshold}")
+
+            data_max = ndimage.maximum_filter(self.data, neighborhood_size)
+            maxima = (self.data == data_max)
+            data_min = ndimage.minimum_filter(self.data, neighborhood_size)
+            diff = ((data_max - data_min) > current_threshold)
+            maxima[diff == 0] = 0
+
+            labeled, num_objects = ndimage.label(maxima)
+            slices = ndimage.find_objects(labeled)
+
+            if slices:  # If we found maxima
+                maxima_coords = np.array([[(dy.start + dy.stop - 1) / 2, (dx.start + dx.stop - 1) / 2]
+                                          for dy, dx in slices])
+                maxima_coords = self.close_to_contour(maxima_coords)
+
+                if len(maxima_coords) > 0:  # If we still have points after contour filtering
+                    gray = np.uint8(self.data * 255)
+                    gX = cv2.Sobel(gray, cv2.CV_64F, 1, 0)
+                    gY = cv2.Sobel(gray, cv2.CV_64F, 0, 1)
+                    magnitude = np.sqrt((gX ** 2) + (gY ** 2))
+                    orientation = np.arctan2(gY, gX) * (180 / np.pi) % 180
+
+                    if plot:
+                        self.plotting(maxima_coords, slices, magnitude, orientation, gt)
+
+                    maxima_coords_int = [(int(i), int(j)) for i, j in maxima_coords]
+                    df = pd.DataFrame(np.zeros((640, 480), dtype=int))
+                    x_coords, y_coords = zip(*maxima_coords_int)
+                    df.iloc[y_coords, x_coords] = 1
+                    return df, pd.DataFrame(magnitude), pd.DataFrame(orientation)
+
+            print(f"No valid maxima found with threshold {current_threshold}, reducing threshold...")
+
+        # If we still haven't found any maxima after all attempts
+        print(f"Warning: No local maxima found for file {self.csv_path} after {max_attempts} attempts")
+        df = pd.DataFrame(np.zeros((640, 480), dtype=int))
         gray = np.uint8(self.data * 255)
         gX = cv2.Sobel(gray, cv2.CV_64F, 1, 0)
         gY = cv2.Sobel(gray, cv2.CV_64F, 0, 1)
-
         magnitude = np.sqrt((gX ** 2) + (gY ** 2))
         orientation = np.arctan2(gY, gX) * (180 / np.pi) % 180
-
-        if plot:
-            self.plotting(maxima_coords,slices,magnitude,orientation,gt)
-
-        maxima_coords_int = [(int(i), int(j)) for i, j in maxima_coords]
-        df = pd.DataFrame(np.zeros((640, 480), dtype=int))
-        x_coords, y_coords = zip(*maxima_coords_int)
-        df.iloc[y_coords, x_coords] = 1
-        return df,pd.DataFrame(magnitude),pd.DataFrame(orientation)
+        return df, pd.DataFrame(magnitude), pd.DataFrame(orientation)
 
     def convert_csv_to_png(self,csv_path):
         df = pd.read_csv(csv_path, header=None)
