@@ -2,6 +2,8 @@ import os
 import shutil
 from pathlib import Path
 import random
+
+import cv2
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -53,13 +55,27 @@ class PlacentaDataset(Dataset):
     def __len__(self):
         return len(self.samples)
 
+
     def __getitem__(self, idx):
         img_path, label = self.samples[idx]
         image = Image.open(img_path).convert('RGB')
+
+        image = np.array(image)  # Convert PIL image to numpy array
+        lab_image = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)  # Convert to LAB color space
+        l_channel, a_channel, b_channel = cv2.split(lab_image)  # Split channels
+
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l_channel = clahe.apply(l_channel)
+
+        lab_image = cv2.merge((l_channel, a_channel, b_channel))
+        image_clahe = cv2.cvtColor(lab_image, cv2.COLOR_LAB2RGB)  # Convert back to RGB
+
+        image = Image.fromarray(image_clahe)
+
         if self.transform:
             image = self.transform(image)
-        return image, label
 
+        return image, label
 
 
 class PlacentaClassifier(nn.Module):

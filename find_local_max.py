@@ -8,65 +8,177 @@ import scipy.ndimage as ndimage
 import cv2
 from PIL import Image
 
+import os
+import numpy as np
+import cv2
+from pathlib import Path
+from PIL import Image
+
 
 class FindLocalMax:
-    def __init__(self, csv_path,segment_path,ground_truth,threshold=None):
+    def __init__(self, csv_path, rgb_image, ground_truth=None, threshold=None):
+        """
+        Initialize the FindLocalMax object.
+
+        Args:
+            csv_path (str): Path to the CSV file containing depth data.
+            rgb_image (str): Path to the RGB image.
+            ground_truth (str): Path to the ground truth file (optional).
+            threshold (float): Optional threshold for processing.
+        """
         self.csv_path = csv_path
         self.processed_path = str(
-            Path(csv_path).parent.parent / 'png_files' / Path(csv_path).name.replace('.csv', '.png'))
+            Path(csv_path).parent.parent / 'png_files' / Path(csv_path).name.replace('.csv', '.png')
+        )
         os.makedirs(os.path.dirname(self.processed_path), exist_ok=True)
         self.threshold = threshold
+        self.data = None
+        self.data = self.apply_mask(rgb_image)
         self.data = self.read_csv_and_norm(save=True)
+        self.data = self.apply_mask(rgb_image)
         self.maxima_coords = None
         self.ground_truth = ground_truth
-        self.contour=None
-        if not self.contour:
-            self.get_mask_contour(segment_path)
+        self.contour = None
 
-    def get_mask_contour(self,segment_path):
-        binary_image = cv2.imread(segment_path, cv2.IMREAD_GRAYSCALE)
-        contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        mask = np.zeros_like(binary_image)
-        cv2.drawContours(mask, contours, -1, (255), thickness=1)
-        self.contour = [(x, y) for x, y in zip(np.where(mask == 255)[0], np.where(mask == 255)[1])]
+    def apply_mask(self, rgb_image_path):
+        """
+        Convert the RGB image to grayscale and mask out the black (0-value) regions from the CSV data.
 
-    def distance(self,point1, point2):
-        return np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
+        Args:
+            rgb_image_path (str): Path to the RGB image.
+        """
+        # Convert RGB image to grayscale
+        rgb_image = cv2.imread(rgb_image_path)
+        if rgb_image is None:
+            raise FileNotFoundError(f"RGB image not found at {rgb_image_path}")
+        gray_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2GRAY)
 
-    def close_to_contour(self,maxima_coords,threshold_distance=5):
-        filtered_coords = []
-        for point in maxima_coords:
-            point_close_to_contour = False
-            for cord in self.contour:
-                dist = self.distance(cord,point)
-                if 0 <= dist <= threshold_distance:
-                    point_close_to_contour = True
-                    break
-            if not point_close_to_contour:
-                filtered_coords.append(point)
-        filtered_coords = np.array(filtered_coords)
-        return filtered_coords
+        # Create a binary mask from the grayscale image
+        _, binary_mask = cv2.threshold(gray_image, 1, 255, cv2.THRESH_BINARY)
 
-    def stretch_contrast(self,image):
+        # Read CSV data and mask out the black regions
+        if self.data is None:
+            data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
+            if data.shape[:2] != binary_mask.shape:
+                raise ValueError("Mismatch between CSV data and RGB image dimensions.")
+            self.data = np.where(binary_mask > 0, data, 0)  # Apply mask
+        else:
+            self.data = np.where(binary_mask > 0, self.data, 0)
+
+        return self.data
+
+    import numpy as np
+    import cv2
+    from PIL import Image
+
+    def read_csv_and_norm(self, save=False):
+        """
+        Enhance local differences in depth data while preserving local max visibility.
+
+        Steps:
+        1. Ignore zero values (background).
+        2. Apply CLAHE (Local Histogram Equalization).
+        3. Apply Gamma Correction to reduce brightness (if needed).
+        4. Apply High-Pass Filter (Laplacian) to emphasize edges.
+        5. Adaptive Sharpening for high-contrast areas.
+        6. Merge enhanced data back into the masked region.
+
+        Args:
+            save (bool): Whether to save the processed image.
+
+        Returns:
+            np.ndarray: Processed depth image.
+        """
+        # Load CSV depth data
+        data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
+
+        # Mask for valid depth values (ignore background)
+        mask = (data > 0).astype(np.uint8)  # 1 for valid pixels, 0 for background
+
+        # Extract non-zero values for processing
+        non_zero_pixels = data[mask == 1]  # Extract only valid depth values
+
+        if non_zero_pixels.size > 0:
+
+            ## Step 1: Normalize within valid regions (ignore background)
+            min_val = np.percentile(non_zero_pixels, 2)
+            max_val = np.percentile(non_zero_pixels, 98)
+            stretched = (non_zero_pixels - min_val) / (max_val - min_val)
+            stretched = np.clip(stretched, 0, 1) * 255
+
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            contrast_enhanced = clahe.apply(stretched.astype(np.uint8))
+
+            gamma = 1.2 # Tune this value for your dataset
+            gamma_corrected = np.power(contrast_enhanced / 255.0, gamma) * 255
+            gamma_corrected = np.clip(gamma_corrected, 0, 255).astype(np.uint8)
+
+            laplacian = cv2.Laplacian(gamma_corrected, cv2.CV_64F, ksize=3)
+            enhanced_edges = gamma_corrected - 0.5 * laplacian  # Boosts local differences
+
+            blurred = cv2.GaussianBlur(enhanced_edges, (3, 3), 0)
+            sharpened = cv2.addWeighted(enhanced_edges, 1.5, blurred, -0.5, 0)
+
+            processed = np.zeros_like(data)
+            processed[data > 0] = sharpened.reshape(-1)
+
+        else:
+            processed = data  # If all zeros, keep as is
+
+        # Convert to uint8 for saving
+        processed = np.clip(processed, 0, 255).astype(np.uint8)
+
+        if save:
+            Image.fromarray(processed).save(self.processed_path)
+
+        return processed
+
+    def adaptive_normalization(self, image, clip_low=5, clip_high=95):
+        """Normalize depth values using percentile-based min-max scaling."""
+        min_val = np.percentile(image, clip_low)
+        max_val = np.percentile(image, clip_high)
+        normalized = (image - min_val) / (max_val - min_val) * 255
+        return np.clip(normalized, 0, 255).astype(np.uint8)
+
+    def log_transform(self, image):
+        """Apply logarithmic transformation to reduce extreme brightness."""
+        log_image = np.log1p(image)
+        log_image = (log_image / np.max(log_image)) * 255
+        return log_image.astype(np.uint8)
+
+    def gamma_correction(self, image, gamma=0.7):
+        """Apply gamma correction to adjust brightness."""
+        inv_gamma = 1.0 / gamma
+        table = np.array([(i / 255.0) ** inv_gamma * 255 for i in np.arange(0, 256)]).astype("uint8")
+        return cv2.LUT(image, table)
+
+    def apply_clahe(self, image, mask):
+        """Apply CLAHE only on valid regions."""
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        valid_pixels = image[mask > 0]
+        if valid_pixels.size > 0:
+            equalized = clahe.apply(valid_pixels)
+            result = np.zeros_like(image)
+            result[mask > 0] = equalized.reshape(-1)
+            return result
+        return image
+
+    def stretch_contrast(self, image):
+        """
+        Stretch the contrast of the image.
+
+        Args:
+            image (np.ndarray): Input image.
+
+        Returns:
+            np.ndarray: Image with stretched contrast.
+        """
         min_val = np.min(image)
         max_val = np.max(image)
         stretched_image = (image - min_val) / (max_val - min_val) * 255
         return stretched_image
 
-    def read_csv_and_norm(self, p=2, save=False):
-        my_data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
-        image = my_data
-        min_non_zero = np.min(image[image != 0])
-        image[image != 0] -= min_non_zero - 1
-        image = self.stretch_contrast(image)
-        data = np.power(image, p)
 
-        if save:
-            data_array = image.astype(np.uint8)
-            image = Image.fromarray(data_array)
-            image.save(self.processed_path)
-
-        return data
 
     def otsu_threshold(self,image, min_var=True):
         hist, bins = np.histogram(image, bins=256, range=(0, 256))

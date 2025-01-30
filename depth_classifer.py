@@ -1,12 +1,15 @@
 import os
 import re
 import shutil
+from collections import Counter
 from pathlib import Path
 import random
+
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torchvision import transforms
 from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
 from PIL import Image
@@ -20,7 +23,66 @@ from find_local_max import FindLocalMax
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+class PlacentaHHADataset(Dataset):
+    def __init__(self, data_dir, depth_features_dir, transform=None, is_train=False):
+        self.data_dir = Path(data_dir)
+        self.depth_features_dir = Path(depth_features_dir)
+        self.is_train = is_train
 
+        self.base_transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+        ])
+        self.train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(224, scale=(0.6, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.5, contrast=0.5),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+        ])
+
+        self.transform = transform if transform else (
+            self.train_transform if is_train else self.base_transform
+        )
+
+        # Map date_string -> depth_file.npz
+        self.depth_files = {}
+        for depth_path in self.depth_features_dir.glob('*.npz'):
+            date_match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})', depth_path.stem)
+            if date_match:
+                self.depth_files[date_match.group(1)] = depth_path
+
+        self.samples = []
+        # Add all samples (image path, depth path, label)
+        for label_dir, label_value in [('positive', 1), ('negative', 0)]:
+            dir_path = self.data_dir / label_dir
+            if dir_path.exists():
+                for img_path in dir_path.glob('*.jpg'):
+                    date_match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})', img_path.stem)
+                    if date_match and date_match.group(1) in self.depth_files:
+                        depth_path = self.depth_files[date_match.group(1)]
+                        self.samples.append((str(img_path), str(depth_path), label_value))
+
+    def __getitem__(self, idx):
+        img_path, depth_path, label = self.samples[idx]
+
+        # ---- Load RGB image ----
+        rgb_img = Image.open(img_path).convert('RGB')
+        rgb_img = self.transform(rgb_img)
+
+        # ---- Load HHA ----
+        depth_data = np.load(depth_path)
+        hha = depth_data['hha']  # (3, H, W)
+        hha = torch.from_numpy(hha).float()  # Convert to PyTorch tensor
+        hha = F.interpolate(hha.unsqueeze(0), size=(224, 224), mode='bilinear', align_corners=False).squeeze(0)
+
+        return rgb_img, hha, label
+
+    def __len__(self):
+        return len(self.samples)
 
 class PlacentaDataset(Dataset):
     def __init__(self, data_dir, depth_features_dir, transform=None, is_train=False):
@@ -72,6 +134,14 @@ class PlacentaDataset(Dataset):
 
         # Load RGB image
         image = Image.open(img_path).convert('RGB')
+        image = np.array(image)  # Convert PIL image to numpy array
+        lab_image = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)  # Convert to LAB color space
+        l_channel, a_channel, b_channel = cv2.split(lab_image)  # Split channels
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l_channel = clahe.apply(l_channel)
+        lab_image = cv2.merge((l_channel, a_channel, b_channel))
+        image_clahe = cv2.cvtColor(lab_image, cv2.COLOR_LAB2RGB)  # Convert back to RGB
+        image = Image.fromarray(image_clahe)
         image = self.transform(image)
 
         # Load depth features
@@ -136,6 +206,33 @@ class DualStreamPlacentaClassifier(nn.Module):
         return self.backbone(x)
 
 
+class LateFusionTwoStream(nn.Module):
+    def __init__(self, num_classes=2):
+        super().__init__()
+
+        # RGB stream
+        self.rgb_net = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
+        in_features_rgb = self.rgb_net.classifier[1].in_features
+        self.rgb_net.classifier = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(in_features_rgb, num_classes)
+        )
+
+        # HHA stream
+        self.hha_net = efficientnet_b0(weights=None)
+        in_features_hha = self.hha_net.classifier[1].in_features
+        self.hha_net.classifier = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(in_features_hha, num_classes)
+        )
+
+    def forward(self, rgb, hha):
+        logits_rgb = self.rgb_net(rgb)  # Output shape: (B, num_classes)
+        logits_hha = self.hha_net(hha)  # Output shape: (B, num_classes)
+
+        # Late fusion: Add logits
+        fused_logits = logits_rgb + logits_hha
+        return fused_logits
 
 
 class PlacentaClassifier(nn.Module):
@@ -151,7 +248,7 @@ class PlacentaClassifier(nn.Module):
     def forward(self, x):
         return self.efficientnet(x)
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device, seed):
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
     best_val_acc = 0.0
     for epoch in range(num_epochs):
         model.train()
@@ -159,11 +256,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         correct = 0
         total = 0
 
-        for rgb, depth, labels in train_loader:
-            rgb, depth, labels = rgb.to(device), depth.to(device), labels.to(device)
+        for rgb, hha, labels in train_loader:
+            rgb, hha, labels = rgb.to(device), hha.to(device), labels.to(device)
             optimizer.zero_grad()
 
-            outputs = model(rgb, depth)
+            outputs = model(rgb, hha)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -174,24 +271,28 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             correct += predicted.eq(labels).sum().item()
 
         train_acc = 100. * correct / total
-        train_loss = running_loss / len(train_loader)
+        print(f"Epoch {epoch+1}/{num_epochs} Train Acc: {train_acc:.2f}% Loss: {running_loss/len(train_loader):.4f}")
 
         # Validation
         model.eval()
         val_correct = 0
         val_total = 0
         with torch.no_grad():
-            for rgb, depth, labels in val_loader:
-                rgb, depth, labels = rgb.to(device), depth.to(device), labels.to(device)
-                outputs = model(rgb, depth)
+            for rgb, hha, labels in val_loader:
+                rgb, hha, labels = rgb.to(device), hha.to(device), labels.to(device)
+                outputs = model(rgb, hha)
                 _, predicted = outputs.max(1)
                 val_total += labels.size(0)
                 val_correct += predicted.eq(labels).sum().item()
         val_acc = 100. * val_correct / val_total
+        print(f"Validation Acc: {val_acc:.2f}%")
 
+        # Save best model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), f'best_dual_stream_model_seed_{seed}.pth')
+            torch.save(model.state_dict(), "best_hha_model.pth")
+
+    print("Best Validation Acc:", best_val_acc)
 
 
 def evaluate_model(model, test_loader, device,seed):
@@ -200,9 +301,9 @@ def evaluate_model(model, test_loader, device,seed):
     all_labels = []
 
     with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs = inputs.to(device)
-            outputs = model(inputs)
+        for rgb, hha, labels in test_loader:
+            rgb, hha, labels = rgb.to(device), hha.to(device), labels.to(device)
+            outputs = model(rgb, hha)
             _, predicted = torch.max(outputs.data, 1)
             all_preds.extend(predicted.cpu().numpy())
             all_labels.extend(labels.numpy())
@@ -258,14 +359,17 @@ class DepthFeatureExtractor:
         original_depth = np.genfromtxt(csv_path, delimiter=',')[1:, :]
 
         normalized_depth = local_max.read_csv_and_norm(save=False)
-        # Get features from FindLocalMax
         maxima_coords, magnitude, orientation = local_max.detect_local_maxima(
             neighborhood_size=self.neighborhood_size,
             plot=False
         )
 
-        # Create feature channels
+        # Create HHA-like feature map
+        hha = np.stack([normalized_depth, orientation, magnitude], axis=0)
+
+        # Save all relevant features
         features = {
+            'hha': hha,  # HHA representation
             'maxima': maxima_coords.to_numpy(),
             'magnitude': magnitude.to_numpy(),
             'orientation': orientation.to_numpy(),
@@ -542,64 +646,70 @@ class EnsemblePlacentaClassifier:
         return ensemble_metrics, ensemble_cm, individual_metrics
 
 
-
 def main():
     # Set paths
     root_dir = Path.cwd()
-    color_images_dir = root_dir / "Images" / "color_images"
+    color_images_dir = root_dir / "Images" / "masked_images"
     depth_dir = root_dir / "Images" / "csv_files"
     gt_dir = root_dir / "Images" / "gt"
-    num_ensembles = 1
-    for seed in [2]:
-        output_base_dir = root_dir / f"dual_stream_dataset_split_seed_{seed}"
+    seed = 2  # Fixed seed for reproducibility
+    output_base_dir = root_dir / f"dual_stream_dataset_split_seed_{seed}"
+    # Organize the dataset if it doesn't exist
+    if not output_base_dir.exists():
+        print(f"\nOrganizing dataset for seed {seed}...")
+        organizer = BalancedPlacentaDataOrganizer(
+            color_images_dir=color_images_dir,
+            depth_dir=depth_dir,
+            gt_dir=gt_dir,
+            output_base_dir=output_base_dir
+        )
+        organizer.organize_datasets(seed=seed)
+    else:
+        print(f"\nUsing existing dataset for seed {seed}")
 
-        # Only organize data if it doesn't exist
-        if not output_base_dir.exists():
-            print(f"\nOrganizing dataset for seed {seed}...")
-            organizer = BalancedPlacentaDataOrganizer(
-                color_images_dir=color_images_dir,
-                depth_dir=depth_dir,
-                gt_dir=gt_dir,
-                output_base_dir=output_base_dir,
-                num_ensembles = num_ensembles
-            )
-            organizer.organize_datasets(seed=seed)
-        else:
-            print(f"\nUsing existing dataset for seed {seed}")
+    # Initialize the dataset
+    train_dataset = PlacentaHHADataset(
+        data_dir=output_base_dir / 'ensemble_0' / 'train',
+        depth_features_dir=output_base_dir / 'ensemble_0' / 'train' / 'depth_features',
+        is_train=True
+    )
+    val_dataset = PlacentaHHADataset(
+        data_dir=output_base_dir / 'ensemble_0' / 'val',
+        depth_features_dir=output_base_dir / 'ensemble_0' / 'val' / 'depth_features'
+    )
+    test_dataset = PlacentaHHADataset(
+        data_dir=output_base_dir / 'ensemble_0' / 'test',
+        depth_features_dir=output_base_dir / 'ensemble_0' / 'test' / 'depth_features'
+    )
 
-        ensemble = EnsemblePlacentaClassifier(num_ensembles = num_ensembles)
+    # Create dataloaders
+    labels = [sample[2] for sample in train_dataset.samples]  # Extract labels from dataset
+    label_counts = Counter(labels)  # Count occurrences of each label
+    print(f"Class distribution in training set: {label_counts}")
 
-        ensemble_datasets = []
-        for i in range(num_ensembles):  # assuming 5 models in ensemble
-            datasets = {
-                'train': PlacentaDataset(
-                    output_base_dir / f'ensemble_{i}' / 'train',
-                    output_base_dir / f'ensemble_{i}' / 'train'/'depth_features',
-                    is_train=True
-                ),
-                'val': PlacentaDataset(
-                    output_base_dir / f'ensemble_{i}' / 'val',
-                    output_base_dir / f'ensemble_{i}' / 'val'/'depth_features'
-                ),
-                'test': PlacentaDataset(
-                    output_base_dir / f'ensemble_{i}' / 'test',
-                    output_base_dir / f'ensemble_{i}' / 'test'/'depth_features'
-                )
-            }
-            ensemble_datasets.append(datasets)
 
-        # Train and evaluate the ensemble
-        ensemble.train_ensemble(ensemble_datasets)
-        test_loader = DataLoader(ensemble_datasets[0]['test'], batch_size=32, shuffle=False)
-        ensemble_metrics, ensemble_cm, individual_metrics = ensemble.evaluate_ensemble(test_loader)
+    # Create a WeightedRandomSampler to balance the classes
+    train_loader = DataLoader(train_dataset, batch_size=32, num_workers=4,shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=4)
 
-        print(f"\nResults for seed {seed}:")
-        print("Ensemble performance:", ensemble_metrics)
-        print("Confusion matrix:\n", ensemble_cm)
+    # Initialize the dual-stream model
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = LateFusionTwoStream(num_classes=2).to(device)
 
+    # Set up optimizer and loss function
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+    criterion = nn.CrossEntropyLoss()
+
+    # Train the model
+    print("\nStarting training...")
+    train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=30, device=device)
+
+    # Evaluate the model
+    print("\nEvaluating on the test set...")
+    evaluate_model(model, test_loader, device,seed=seed)
 
 
 if __name__ == "__main__":
     main()
-
 

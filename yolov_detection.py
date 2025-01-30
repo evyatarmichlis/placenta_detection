@@ -39,8 +39,11 @@ class PlacentaYOLOPipeline:
         match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})', filename)
         return match.group(1) if match else None
 
-    def mask_to_bboxes(self, mask):
-        """Convert binary mask to YOLO format bounding boxes."""
+    def mask_to_bboxes(self, mask, scale_factor=1.2):
+        """
+        Convert binary mask to YOLO format bounding boxes,
+        and enlarge them by `scale_factor` around the center.
+        """
         if len(mask.shape) > 2:
             mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
 
@@ -55,10 +58,41 @@ class PlacentaYOLOPipeline:
                 continue
 
             x, y, w, h = cv2.boundingRect(contour)
+
+            # Convert to normalized YOLO coords
             x_center = (x + w / 2) / image_w
             y_center = (y + h / 2) / image_h
             width = w / image_w
             height = h / image_h
+
+            # -----------------------
+            # Enlarge bounding box
+            # -----------------------
+            # 1) Multiply width & height by the scale factor
+            new_width = width * scale_factor
+            new_height = height * scale_factor
+
+            # 2) Convert to "left, right, top, bottom" in [0..1]
+            left = x_center - new_width / 2
+            right = x_center + new_width / 2
+            top = y_center - new_height / 2
+            bottom = y_center + new_height / 2
+
+            # 3) Clamp to image boundaries [0,1]
+            left = max(left, 0.0)
+            right = min(right, 1.0)
+            top = max(top, 0.0)
+            bottom = min(bottom, 1.0)
+
+            # 4) Recompute center and size after clamping
+            x_center = (left + right) / 2
+            y_center = (top + bottom) / 2
+            width = right - left
+            height = bottom - top
+
+            # If the box became too small or invalid, skip
+            if width <= 0 or height <= 0:
+                continue
 
             bboxes.append([x_center, y_center, width, height])
 
@@ -66,6 +100,17 @@ class PlacentaYOLOPipeline:
 
     def prepare_dataset(self, split_ratios={'train': 0.7, 'val': 0.15, 'test': 0.15}, seed=42):
         """Prepare YOLO format dataset."""
+        random.seed(seed)
+        for split in ['train', 'val', 'test']:
+            images_dir = self.yolo_dir / split / 'images'
+            labels_dir = self.yolo_dir / split / 'labels'
+            # Remove old directories if they exist
+            shutil.rmtree(images_dir, ignore_errors=True)
+            shutil.rmtree(labels_dir, ignore_errors=True)
+            # Recreate clean directories
+            images_dir.mkdir(parents=True, exist_ok=True)
+            labels_dir.mkdir(parents=True, exist_ok=True)
+
         random.seed(seed)
 
         # Match images with GT masks
@@ -98,10 +143,20 @@ class PlacentaYOLOPipeline:
             print(f"\nProcessing {split} split...")
             for img_file, mask_file in tqdm(files):
                 # Copy image
-                shutil.copy2(img_file, self.yolo_dir / split / 'images' / img_file.name)
+                color_img = cv2.imread(str(img_file), cv2.IMREAD_COLOR)
+
+
+                lab_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2LAB)
+                l_channel, a_channel, b_channel = cv2.split(lab_img)
+
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                l_channel = clahe.apply(l_channel)
+                lab_img = cv2.merge((l_channel, a_channel, b_channel))
+                color_img_clahe = cv2.cvtColor(lab_img, cv2.COLOR_LAB2BGR)
+                out_img_path = self.yolo_dir / split / 'images' / img_file.name
+                cv2.imwrite(str(out_img_path), color_img_clahe)  # Save processed image
                 stats[split]['total'] += 1
 
-                # Convert mask to bboxes
                 mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
                 bboxes = self.mask_to_bboxes(mask)
 
@@ -170,18 +225,19 @@ class PlacentaYOLOPipeline:
                             split='test')
 
         results = model.predict(
-            source=self.yolo_dir/'test' ,
+            source=self.yolo_dir/'test'/'images' ,
             save=True,  # Save the results to a folder
             imgsz=640,  # Image size
-            conf=0.25  # Confidence threshold for predictions
+            conf=0.25,  # Confidence threshold for predictions
+            project=self.yolo_dir/"predictions"  # or use save_dir
+
         )
-        print(results)
 
 def main():
     # Set paths
     current_file = Path(__file__)
     root_dir = current_file.parent
-    color_images_dir = root_dir / "Images" / "color_images"
+    color_images_dir = root_dir / "Images" / "masked_images"
     gt_dir = root_dir / "Images" / "gt"
     output_dir = root_dir / "yolo_detection"
 
@@ -198,12 +254,12 @@ def main():
 
     # Train model
     model, results = pipeline.train_model(
-        epochs=100,
+        epochs=300,
         imgsz=640,
         batch=32,
         model_size='m'  # 'n' for nano, 's' for small, 'm' for medium
     )
-
+    # model = YOLO('yolo_detection/runs/train13/weights/best.pt')
     # Evaluate model
     metrics = pipeline.evaluate_model(model)
 
