@@ -58,7 +58,8 @@ class FindLocalMax:
 
         # Read CSV data and mask out the black regions
         if self.data is None:
-            data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
+            # data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
+            data = np.genfromtxt(self.csv_path, delimiter=',')
             if data.shape[:2] != binary_mask.shape:
                 raise ValueError("Mismatch between CSV data and RGB image dimensions.")
             self.data = np.where(binary_mask > 0, data, 0)  # Apply mask
@@ -71,7 +72,7 @@ class FindLocalMax:
     import cv2
     from PIL import Image
 
-    def read_csv_and_norm(self, save=False):
+    def read_csv_and_norm(self, save=False, flag = True):
         """
         Enhance local differences in depth data while preserving local max visibility.
 
@@ -90,16 +91,15 @@ class FindLocalMax:
             np.ndarray: Processed depth image.
         """
         # Load CSV depth data
-        data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
+        # data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
+        data = np.genfromtxt(self.csv_path, delimiter=',')
 
         # Mask for valid depth values (ignore background)
         mask = (data > 0).astype(np.uint8)  # 1 for valid pixels, 0 for background
 
         # Extract non-zero values for processing
         non_zero_pixels = data[mask == 1]  # Extract only valid depth values
-
-        if non_zero_pixels.size > 0:
-
+        if non_zero_pixels.size > 0 and flag:
             ## Step 1: Normalize within valid regions (ignore background)
             min_val = np.percentile(non_zero_pixels, 2)
             max_val = np.percentile(non_zero_pixels, 98)
