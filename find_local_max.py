@@ -58,8 +58,11 @@ class FindLocalMax:
 
         # Read CSV data and mask out the black regions
         if self.data is None:
-            # data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
+
             data = np.genfromtxt(self.csv_path, delimiter=',')
+            if data.shape == (481,640):
+                data =   data[1:, :]
+            # data = np.genfromtxt(self.csv_path, delimiter=',')
             if data.shape[:2] != binary_mask.shape:
                 raise ValueError("Mismatch between CSV data and RGB image dimensions.")
             self.data = np.where(binary_mask > 0, data, 0)  # Apply mask
@@ -91,8 +94,9 @@ class FindLocalMax:
             np.ndarray: Processed depth image.
         """
         # Load CSV depth data
-        # data = np.genfromtxt(self.csv_path, delimiter=',')[1:, :]
         data = np.genfromtxt(self.csv_path, delimiter=',')
+        if data.shape == (481, 640):
+            data = data[1:, :]
 
         # Mask for valid depth values (ignore background)
         mask = (data > 0).astype(np.uint8)  # 1 for valid pixels, 0 for background

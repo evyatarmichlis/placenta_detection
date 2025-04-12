@@ -626,7 +626,6 @@ class MultiStreamDataset(Dataset):
             depth_features['orientation']
         ])).float()
 
-        # Load label if exists
         label_path = self.data_dir / 'labels' / f"{img_path.stem}.txt"
         if label_path.exists() and label_path.stat().st_size > 0:
             labels = torch.from_numpy(np.loadtxt(str(label_path))).float()
