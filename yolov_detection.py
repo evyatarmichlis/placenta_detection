@@ -4,7 +4,6 @@ import numpy as np
 from pathlib import Path
 import shutil
 from tqdm import tqdm
-import random
 import yaml
 import re
 from ultralytics import YOLO
@@ -12,42 +11,51 @@ import matplotlib.pyplot as plt
 
 
 class PlacentaYOLOPipeline:
-    def __init__(self, color_images_dir, gt_dir, output_dir, min_contour_area=100):
+    def __init__(self, data_dir, seed, output_dir, min_contour_area=100):
         """
-        Initialize the pipeline for preparing and training YOLO model.
+        Initialize the pipeline for preparing and training YOLO model using existing splits.
 
         Args:
-            color_images_dir (Path): Directory with color images.
-            gt_dir (Path): Directory with ground truth masks.
+            data_dir (str): Base data directory name prefix.
+            seed (int): Seed number used in the directory structure.
             output_dir (Path): Directory for YOLO dataset and results.
             min_contour_area (int): Minimum contour area to consider.
         """
-        self.color_images_dir = Path(color_images_dir)
-        self.gt_dir = Path(gt_dir)
+        self.data_dir = data_dir
+        self.seed = seed
+        self.base_path = Path(f'ucnet/placenta_data/{data_dir}{seed}')
         self.output_dir = Path(output_dir)
         self.min_contour_area = min_contour_area
 
+        # Helper method for extracting datetime from filenames
+        def extract_datetime(filename):
+            """Extract datetime pattern from filename (YYYY-MM-DD_HH-MM-SS)"""
+            match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})', str(filename))
+            return match.group(1) if match else None
+
+        self.extract_datetime = extract_datetime
+
+        # Define paths for existing splits
+        self.split_paths = {
+            'train': {
+                'img': self.base_path / 'train' / 'img',
+                'gt': self.base_path / 'train' / 'gt'
+            },
+            'val': {
+                'img': self.base_path / 'val' / 'img',
+                'gt': self.base_path / 'val' / 'gt'
+            },
+            'test': {
+                'img': self.base_path / 'test' / 'img',
+                'gt': self.base_path / 'test' / 'gt'
+            }
+        }
+
         # Create YOLO directory structure
-        self.yolo_dir = self.output_dir / 'yolo_dataset'
+        self.yolo_dir = self.output_dir / f'yolo_dataset_{seed}'
         for split in ['train', 'val', 'test']:
             (self.yolo_dir / split / 'images').mkdir(parents=True, exist_ok=True)
             (self.yolo_dir / split / 'labels').mkdir(parents=True, exist_ok=True)
-
-    def extract_datetime(self, filename):
-        """
-        Extract datetime pattern from filename.
-        Expected pattern: YYYY-MM-DD_HH-MM-SS
-        """
-        match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})', filename)
-        return match.group(1) if match else None
-
-    def extract_hour_key(self, filename):
-        """
-        Extract a key representing the date and hour from the filename.
-        For example, for '2023-01-01_12-30-15.jpg', return '2023-01-01_12'
-        """
-        dt_str = self.extract_datetime(filename)
-        return dt_str[:13] if dt_str else None
 
     def mask_to_bboxes(self, mask, scale_factor=1.2):
         """
@@ -96,10 +104,9 @@ class PlacentaYOLOPipeline:
 
         return bboxes
 
-    def prepare_dataset(self, split_ratios={'train': 0.7, 'val': 0.15, 'test': 0.15}, seed=42):
+    def prepare_dataset(self):
         """
-        Prepare a YOLO-format dataset by grouping images by hour (to avoid temporal leakage)
-        and then splitting the hour groups into train, val, and test sets.
+        Prepare a YOLO-format dataset using the existing splits.
         """
         # Clean existing directories
         for split in ['train', 'val', 'test']:
@@ -110,51 +117,41 @@ class PlacentaYOLOPipeline:
             images_dir.mkdir(parents=True, exist_ok=True)
             labels_dir.mkdir(parents=True, exist_ok=True)
 
-        # Match images with ground truth masks
-        print("Matching images with ground truth masks...")
-        gt_files = {self.extract_datetime(f.name): f for f in self.gt_dir.glob('*.jpg')}
-        matched_files = []
-        for img_file in self.color_images_dir.glob('*.jpg'):
-            img_datetime = self.extract_datetime(img_file.name)
-            if img_datetime and img_datetime in gt_files:
-                matched_files.append((img_file, gt_files[img_datetime]))
-
-        # Group matched files by the hour key (e.g. "2023-01-01_12")
-        hour_groups = {}
-        for img_file, mask_file in matched_files:
-            key = self.extract_hour_key(img_file.name)
-            if key is None:
-                continue
-            hour_groups.setdefault(key, []).append((img_file, mask_file))
-
-        # Sort and shuffle the hour keys
-        group_keys = list(hour_groups.keys())
-        group_keys.sort()
-        random.seed(seed)
-        random.shuffle(group_keys)
-
-        n_total = len(group_keys)
-        n_train = int(split_ratios['train'] * n_total)
-        n_val = int(split_ratios['val'] * n_total)
-        # Remaining groups go to test.
-        train_keys = group_keys[:n_train]
-        val_keys = group_keys[n_train:n_train+n_val]
-        test_keys = group_keys[n_train+n_val:]
-
-        # Merge files from each hour group for each split
-        splits = {
-            'train': [item for key in train_keys for item in hour_groups[key]],
-            'val': [item for key in val_keys for item in hour_groups[key]],
-            'test': [item for key in test_keys for item in hour_groups[key]]
-        }
-
-        stats = {split: {'total': 0, 'with_defects': 0, 'total_defects': 0}
-                 for split in splits}
-
         # Process each split
-        for split, files in splits.items():
-            print(f"\nProcessing {split} split with {len(files)} samples...")
-            for img_file, mask_file in tqdm(files):
+        stats = {split: {'total': 0, 'with_defects': 0, 'total_defects': 0}
+                 for split in ['train', 'val', 'test']}
+
+        for split in ['train', 'val', 'test']:
+            print(f"\nProcessing {split} split...")
+            img_dir = self.split_paths[split]['img']
+            gt_dir = self.split_paths[split]['gt']
+
+            # Get all image and GT files
+            img_files = list(img_dir.glob('*.jpg'))
+            gt_files = list(gt_dir.glob('*.jpg'))
+
+            # Create dictionaries with datetime as keys
+            img_dict = {}
+            for f in img_files:
+                dt = self.extract_datetime(f.name)
+                if dt:
+                    img_dict[dt] = f
+
+            gt_dict = {}
+            for f in gt_files:
+                dt = self.extract_datetime(f.name)
+                if dt:
+                    gt_dict[dt] = f
+
+            # Find common datetime keys
+            common_datetimes = set(img_dict.keys()) & set(gt_dict.keys())
+
+            print(f"Found {len(common_datetimes)} matching image-mask pairs in {split} split")
+
+            for dt in tqdm(common_datetimes):
+                img_file = img_dict[dt]
+                mask_file = gt_dict[dt]
+
                 # Read and process the color image (apply CLAHE)
                 color_img = cv2.imread(str(img_file))
                 lab_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2LAB)
@@ -165,21 +162,30 @@ class PlacentaYOLOPipeline:
                 color_img_clahe = cv2.cvtColor(lab_img, cv2.COLOR_LAB2BGR)
 
                 # Save processed image
-                out_img_path = self.yolo_dir / split / 'images' / img_file.name
+                filename = f"{dt}.jpg"
+                out_img_path = self.yolo_dir / split / 'images' / filename
                 cv2.imwrite(str(out_img_path), color_img_clahe)
                 stats[split]['total'] += 1
 
                 # Process the ground truth mask
                 mask = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
                 bboxes = self.mask_to_bboxes(mask)
-                label_file = self.yolo_dir / split / 'labels' / f"{img_file.stem}.txt"
+
+                # Make sure the label filename matches the image filename (without extension)
+                # This is critical for YOLO to find the corresponding labels
+                label_filename = f"{dt}.txt"
+                label_file = self.yolo_dir / split / 'labels' / label_filename
+
                 if bboxes:
                     with open(label_file, 'w') as f:
                         for bbox in bboxes:
-                            f.write("0 " + " ".join(map(str, bbox)) + "\n")
+                            # Format must be: class_id center_x center_y width height
+                            # with values normalized between 0 and 1
+                            f.write("0 " + " ".join([f"{coord:.6f}" for coord in bbox]) + "\n")
                     stats[split]['with_defects'] += 1
                     stats[split]['total_defects'] += len(bboxes)
                 else:
+                    # Create empty file for no defects (required by YOLO)
                     label_file.touch()
 
         # Create dataset.yaml
@@ -214,7 +220,7 @@ class PlacentaYOLOPipeline:
             imgsz=imgsz,
             batch=batch,
             project=str(self.output_dir / 'runs'),
-            name='train',
+            name=f'train_seed{self.seed}',
             plots=True
         )
         return model, results
@@ -228,36 +234,35 @@ class PlacentaYOLOPipeline:
             save=True,
             imgsz=640,
             conf=0.20,
-            project=self.yolo_dir / "predictions"
+            project=str(self.output_dir / 'predictions'),
+            name=f'test_seed{self.seed}'
         )
         return metrics, results
 
 
 def main():
-    # Set paths (update these paths as needed)
-    current_file = Path(__file__)
-    root_dir = current_file.parent
-    color_images_dir = root_dir / "Images" / "masked_images"
-    gt_dir = root_dir / "Images" / "gt"
-    output_dir = root_dir / "yolo_detection"
+    # Set parameters
+    data_dir = "detectron_seed_"
+    seed = 1  # Change this according to your seed value
+    output_dir = Path("./yolo_detection")  # Update as needed
 
-    # Initialize pipeline
+    # Initialize pipeline with existing splits
     pipeline = PlacentaYOLOPipeline(
-        color_images_dir=color_images_dir,
-        gt_dir=gt_dir,
+        data_dir=data_dir,
+        seed=seed,
         output_dir=output_dir,
         min_contour_area=100
     )
 
-    # Prepare dataset with hour-based splitting
-    pipeline.prepare_dataset(seed=1)
+    # Prepare dataset using existing splits
+    pipeline.prepare_dataset()
 
     # Train model
     model, results = pipeline.train_model(
         epochs=300,
         imgsz=640,
-        batch=32,
-        model_size='m'  # options: 'n', 's', 'm'
+        batch=8,
+        model_size='l'  # options: 'n', 's', 'm'
     )
 
     # Evaluate model

@@ -16,7 +16,7 @@ from PIL import Image
 
 
 class FindLocalMax:
-    def __init__(self, csv_path, rgb_image, ground_truth=None, threshold=None):
+    def __init__(self, csv_path, rgb_image, ground_truth=None, threshold=None,real_depth = True):
         """
         Initialize the FindLocalMax object.
 
@@ -34,7 +34,7 @@ class FindLocalMax:
         self.threshold = threshold
         self.data = None
         self.data = self.apply_mask(rgb_image)
-        self.data = self.read_csv_and_norm(save=True)
+        self.data = self.read_csv_and_norm(save=True,real_depth=real_depth)
         self.data = self.apply_mask(rgb_image)
         self.maxima_coords = None
         self.ground_truth = ground_truth
@@ -60,8 +60,11 @@ class FindLocalMax:
         if self.data is None:
 
             data = np.genfromtxt(self.csv_path, delimiter=',')
+
             if data.shape == (481,640):
                 data =   data[1:, :]
+            if data.shape != (480, 640):
+                data = data.reshape(480, 640)
             # data = np.genfromtxt(self.csv_path, delimiter=',')
             if data.shape[:2] != binary_mask.shape:
                 raise ValueError("Mismatch between CSV data and RGB image dimensions.")
@@ -75,7 +78,7 @@ class FindLocalMax:
     import cv2
     from PIL import Image
 
-    def read_csv_and_norm(self, save=False, flag = True):
+    def read_csv_and_norm(self, save=False, real_depth = False):
         """
         Enhance local differences in depth data while preserving local max visibility.
 
@@ -103,7 +106,7 @@ class FindLocalMax:
 
         # Extract non-zero values for processing
         non_zero_pixels = data[mask == 1]  # Extract only valid depth values
-        if non_zero_pixels.size > 0 and flag:
+        if non_zero_pixels.size > 0 and real_depth:
             ## Step 1: Normalize within valid regions (ignore background)
             min_val = np.percentile(non_zero_pixels, 2)
             max_val = np.percentile(non_zero_pixels, 98)
