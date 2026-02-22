@@ -2,9 +2,9 @@
 name = "placenta-detection"
 version = "0.1.0"
 description = "Placenta detection using YOLO and depth estimation"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-    "Pillow>=9.5.0",
+    "Pillow>=12.1.1",
     "PyYAML>=6.0",
     "accelerate>=0.20.0",
     "dropbox>=11.36.0",
