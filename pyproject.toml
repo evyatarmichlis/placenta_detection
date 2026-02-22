@@ -1,0 +1,29 @@
+[project]
+name = "placenta-detection"
+version = "0.1.0"
+description = "Placenta detection using YOLO and depth estimation"
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=12.1.1",
+    "PyYAML>=6.0",
+    "accelerate>=0.20.0",
+    "dropbox>=11.36.0",
+    "google-api-python-client>=2.115.0",
+    "google-auth>=2.16.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.0",
+    "matplotlib>=3.5.3",
+    "numpy>=1.21.6",
+    "opencv-python>=4.7.0.68",
+    "pandas>=1.1.5",
+    "pyrealsense2>=2.51.1.4348",
+    "requests>=2.28.2",
+    "scikit-learn>=1.2.0",
+    "scipy>=1.7.3",
+    "seaborn>=0.12.2",
+    "torch>=2.0.0",
+    "torchvision>=0.15.1",
+    "tqdm>=4.64.1",
+    "transformers>=4.26.0",
+    "ultralytics>=8.0.0",
+]
